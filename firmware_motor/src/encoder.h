@@ -14,4 +14,8 @@ long encoder_get_ticks_b();
 void encoder_reset_a();
 void encoder_reset_b();
 
+// Get cumulative tick counter since boot (debug only, never reset by PID)
+long encoder_get_total_a();
+long encoder_get_total_b();
+
 #endif // ENCODER_H

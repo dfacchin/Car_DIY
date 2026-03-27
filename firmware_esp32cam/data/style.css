@@ -2,9 +2,13 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    touch-action: none;
     -webkit-user-select: none;
     user-select: none;
+}
+
+html, body, #app {
+    touch-action: none;
+    overscroll-behavior: none;
 }
 
 body {
@@ -12,47 +16,52 @@ body {
     color: #eee;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     overflow: hidden;
-    height: 100vh;
+    height: 100dvh;
     width: 100vw;
 }
 
 #app {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100dvh;
 }
 
 /* Video Stream */
 #video-container {
     position: relative;
     flex: 1;
-    min-height: 200px;
+    min-height: 80px;
     background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
 }
 
 #video-stream {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 #status-overlay {
     position: absolute;
-    top: 8px;
+    top: 4px;
     left: 8px;
     right: 8px;
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
+    font-size: 11px;
     color: #0f0;
     text-shadow: 0 0 4px #000;
 }
 
-#connection-status.disconnected {
-    color: #f44;
+#connection-status.disconnected { color: #f44; }
+
+#admin-link {
+    color: #888;
+    text-decoration: none;
+    font-size: 10px;
+    background: rgba(0,0,0,0.5);
+    padding: 2px 8px;
+    border-radius: 8px;
 }
 
 /* Control Tabs */
@@ -60,15 +69,16 @@ body {
     display: flex;
     background: #16213e;
     border-top: 1px solid #333;
+    flex-shrink: 0;
 }
 
 .tab {
     flex: 1;
-    padding: 10px;
+    padding: 8px;
     background: none;
     border: none;
     color: #888;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
 }
@@ -81,52 +91,187 @@ body {
 /* Control Modes */
 .control-mode {
     display: none;
-    padding: 16px;
+    padding: 8px 10px;
     background: #16213e;
+    flex-shrink: 0;
 }
 
 .control-mode.active {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: space-between;
 }
 
-/* Joystick */
-#joystick-container {
+.mono {
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ================================================
+   Drive Mode: Throttle+Brake (left) + Steering (right)
+   ================================================ */
+
+.drive-col {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 20px;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
-#joystick-base {
-    width: 180px;
-    height: 180px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #2a2a4a, #1a1a2e);
+.brake-col {
+    justify-content: center;
+    gap: 8px;
+    width: 44px;
+}
+
+.steer-col {
+    justify-content: center;
+    width: 150px;
+}
+
+.drive-spacer {
+    flex: 1;
+}
+
+.drive-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #4cc9f0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.drive-val {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* Throttle vertical slider */
+.throttle-track {
+    width: 52px;
+    flex: 1;
+    min-height: 120px;
+    max-height: 180px;
+    background: #2a2a4a;
+    border-radius: 26px;
     border: 2px solid #4cc9f0;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
 }
 
-#joystick-handle {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #4cc9f0, #3a86b4);
+.throttle-zero {
     position: absolute;
-    box-shadow: 0 0 10px rgba(76, 201, 240, 0.5);
+    top: 50%;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    background: rgba(76, 201, 240, 0.3);
+}
+
+.throttle-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(76, 201, 240, 0.25);
     transition: none;
 }
 
-/* Tank Mode Sliders */
+.throttle-thumb {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 20px;
+    background: #4cc9f0;
+    border-radius: 10px;
+    box-shadow: 0 0 8px rgba(76, 201, 240, 0.5);
+}
+
+/* Brake button (tall, next to throttle) */
+#brake-btn {
+    background: #e63946;
+    color: white;
+    border: none;
+    padding: 6px 8px;
+    width: 100%;
+    flex: 1;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+#brake-btn:active, #brake-btn.active {
+    background: #a01020;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+}
+
+/* Steering horizontal slider (~4cm = ~150px at typical tablet DPI) */
+.steering-track {
+    width: 150px;
+    height: 52px;
+    background: #2a2a4a;
+    border-radius: 26px;
+    border: 2px solid #f0a04c;
+    position: relative;
+    overflow: hidden;
+}
+
+.steering-center {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: rgba(240, 160, 76, 0.3);
+}
+
+.steering-thumb {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+    background: radial-gradient(circle, #f0a04c, #b07030);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(240, 160, 76, 0.5);
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 32px;
+    height: 18px;
+    accent-color: #4cc9f0;
+}
+
+.toggle-text {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.toggle-label input:checked ~ .toggle-text {
+    color: #4cc9f0;
+}
+
+/* ================================================
+   Tank Mode: sliders at far left/right edges
+   ================================================ */
+
 .tank-controls {
     display: flex;
-    gap: 60px;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     width: 100%;
 }
 
@@ -134,18 +279,18 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
 }
 
 .slider-group label {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     color: #4cc9f0;
 }
 
 .vertical-slider-track {
     width: 50px;
-    height: 200px;
+    height: 160px;
     background: #2a2a4a;
     border-radius: 25px;
     border: 2px solid #4cc9f0;
@@ -175,93 +320,23 @@ body {
 }
 
 .slider-group span {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: bold;
     font-variant-numeric: tabular-nums;
 }
 
-/* Firmware Update */
-.firmware-panel {
-    display: flex;
-    gap: 24px;
-    width: 100%;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.fw-section {
-    background: #1a1a2e;
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 16px;
-    min-width: 200px;
-    text-align: center;
-}
-
-.fw-section h3 {
-    color: #4cc9f0;
-    margin-bottom: 4px;
-    font-size: 14px;
-}
-
-.fw-section p {
-    color: #888;
-    font-size: 11px;
-    margin-bottom: 10px;
-}
-
-.fw-section input[type="file"] {
-    display: block;
-    width: 100%;
-    margin-bottom: 8px;
-    font-size: 12px;
-    color: #ccc;
-}
-
-.fw-btn {
-    background: #4cc9f0;
-    color: #1a1a2e;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    width: 100%;
-}
-
-.fw-btn:disabled {
-    background: #555;
-    color: #999;
-    cursor: not-allowed;
-}
-
-.fw-btn:active:not(:disabled) {
-    background: #3a86b4;
-}
-
-.fw-progress {
-    margin-top: 8px;
-    font-size: 12px;
-    min-height: 18px;
-    color: #0f0;
-}
-
-.fw-progress.error {
-    color: #f44;
-}
-
 /* Emergency Stop */
 #stop-btn {
-    background: #e63946;
+    background: #8b0000;
     color: white;
     border: none;
-    padding: 16px;
-    font-size: 20px;
+    padding: 8px;
+    font-size: 14px;
     font-weight: 900;
-    letter-spacing: 4px;
+    letter-spacing: 2px;
     cursor: pointer;
     width: 100%;
+    flex-shrink: 0;
 }
 
 #stop-btn:active {

@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "afterEdit": [
+      {
+        "matcher": "shared/protocol.h",
+        "command": "echo DOC-SYNC: protocol.h changed — update docs/uart_protocol.md"
+      },
+      {
+        "matcher": "firmware_esp32cam/src/config.h",
+        "command": "echo DOC-SYNC: ESP32 config changed — update docs/wiring_schematic.md"
+      },
+      {
+        "matcher": "firmware_motor/src/config.h",
+        "command": "echo DOC-SYNC: motor config changed — update docs/wiring_schematic.md"
+      },
+      {
+        "matcher": "firmware_esp32cam/src/web_server.cpp",
+        "command": "echo DOC-SYNC: web_server changed — update docs/api_reference.md"
+      },
+      {
+        "matcher": "firmware_esp32cam/src/main.cpp",
+        "command": "echo DOC-SYNC: main.cpp changed — update docs/architecture.md"
+      },
+      {
+        "matcher": "firmware_esp32cam/src/camera.cpp",
+        "command": "echo DOC-SYNC: camera.cpp changed — update docs/architecture.md"
+      }
+    ]
+  }
+}

@@ -6,16 +6,17 @@ const MAX_RPM = 130;
 const CMD_INTERVAL = 50;    // Send commands every 50ms (20 Hz)
 const STATUS_INTERVAL = 200;
 
-// Determine server address (same host)
 const HOST = window.location.hostname || '192.168.4.1';
 const API_BASE = `http://${HOST}`;
 const STREAM_URL = `http://${HOST}:81/stream`;
 
-let currentMode = 'joystick';
+let currentMode = 'drive';
 let targetLeft = 0;
 let targetRight = 0;
 let cmdTimer = null;
 let statusTimer = null;
+let braking = false;
+let coastMode = localStorage.getItem('coastMode') === 'true';
 
 // ============================================================================
 // Video Stream
@@ -37,16 +38,24 @@ async function sendControl(left, right) {
     try {
         const url = `${API_BASE}/api/control?left=${Math.round(left)}&right=${Math.round(right)}`;
         await fetch(url, { method: 'POST', mode: 'no-cors' });
-    } catch (e) {
-        // Silent fail - will retry
-    }
+    } catch (e) {}
 }
 
 async function sendStop() {
     targetLeft = 0;
     targetRight = 0;
+    braking = false;
     try {
         await fetch(`${API_BASE}/api/stop`, { method: 'POST', mode: 'no-cors' });
+    } catch (e) {}
+}
+
+async function sendBrake() {
+    targetLeft = 0;
+    targetRight = 0;
+    braking = true;
+    try {
+        await fetch(`${API_BASE}/api/brake`, { method: 'POST', mode: 'no-cors' });
     } catch (e) {}
 }
 
@@ -70,11 +79,12 @@ async function fetchStatus() {
     }
 }
 
-// Periodic command sender
 function startCommandLoop() {
     if (cmdTimer) clearInterval(cmdTimer);
     cmdTimer = setInterval(() => {
-        if (targetLeft !== 0 || targetRight !== 0) {
+        if (braking) {
+            sendBrake();
+        } else if (targetLeft !== 0 || targetRight !== 0) {
             sendControl(targetLeft, targetRight);
         }
     }, CMD_INTERVAL);
@@ -91,70 +101,162 @@ document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.add('active');
         currentMode = tab.dataset.mode;
         document.getElementById(`${currentMode}-mode`).classList.add('active');
-        // Reset on mode switch
         targetLeft = 0;
         targetRight = 0;
+        braking = false;
         sendStop();
     });
 });
 
 // ============================================================================
-// Joystick Control
+// Drive Mode: Throttle (left) + Steering (right) + Brake
 // ============================================================================
 
-(function initJoystick() {
-    const base = document.getElementById('joystick-base');
-    const handle = document.getElementById('joystick-handle');
-    const baseRect = () => base.getBoundingClientRect();
-    let active = false;
+(function initDrive() {
+    let throttle = 0;   // -1 to +1
+    let steering = 0;   // -1 to +1
+    let throttleActive = false;
+    let steeringActive = false;
 
-    function updateJoystick(clientX, clientY) {
-        const rect = baseRect();
-        const centerX = rect.left + rect.width / 2;
+    // --- Throttle slider ---
+    const tTrack = document.getElementById('throttle-track');
+    const tThumb = document.getElementById('throttle-thumb');
+    const tFill = document.getElementById('throttle-fill');
+    const tValue = document.getElementById('throttle-value');
+
+    function updateThrottle(clientY) {
+        const rect = tTrack.getBoundingClientRect();
         const centerY = rect.top + rect.height / 2;
-        const maxDist = rect.width / 2 - 30;
+        const maxDist = rect.height / 2 - 14;
 
-        let dx = clientX - centerX;
-        let dy = clientY - centerY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        let dy = centerY - clientY;
+        dy = constrain(dy, -maxDist, maxDist);
+        throttle = dy / maxDist;
 
-        if (dist > maxDist) {
-            dx = (dx / dist) * maxDist;
-            dy = (dy / dist) * maxDist;
+        const thumbY = 50 - (throttle * 46);
+        tThumb.style.top = thumbY + '%';
+
+        if (throttle >= 0) {
+            tFill.style.bottom = '50%';
+            tFill.style.top = 'auto';
+            tFill.style.height = (throttle * 50) + '%';
+        } else {
+            tFill.style.top = '50%';
+            tFill.style.bottom = 'auto';
+            tFill.style.height = (-throttle * 50) + '%';
         }
 
-        handle.style.transform = `translate(${dx}px, ${dy}px)`;
-
-        // Convert to differential drive:
-        // Y axis = throttle (forward/back), X axis = steering
-        const throttle = -(dy / maxDist) * MAX_RPM;   // Up = forward
-        const steering = (dx / maxDist) * MAX_RPM;
-
-        // Mix: differential steering
-        targetLeft = Math.round(constrain(throttle + steering, -MAX_RPM, MAX_RPM));
-        targetRight = Math.round(constrain(throttle - steering, -MAX_RPM, MAX_RPM));
+        tValue.textContent = Math.round(throttle * MAX_RPM);
+        applyDrive();
     }
 
-    function resetJoystick() {
-        handle.style.transform = 'translate(0, 0)';
-        targetLeft = 0;
-        targetRight = 0;
-        sendControl(0, 0);
+    function resetThrottle() {
+        throttle = 0;
+        tThumb.style.top = '50%';
+        tFill.style.height = '0%';
+        tValue.textContent = '0';
+        if (coastMode) {
+            // Coast: don't send any command, let car roll on inertia
+            // Only clear local targets so the command loop stops sending
+            targetLeft = 0;
+            targetRight = 0;
+        } else {
+            applyDrive();  // Sends RPM 0 → PID will actively slow to stop
+        }
     }
 
-    base.addEventListener('pointerdown', (e) => {
-        active = true;
-        base.setPointerCapture(e.pointerId);
-        updateJoystick(e.clientX, e.clientY);
+    tTrack.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        throttleActive = true;
+        braking = false;
+        document.getElementById('brake-btn').classList.remove('active');
+        tTrack.setPointerCapture(e.pointerId);
+        updateThrottle(e.clientY);
+    });
+    tTrack.addEventListener('pointermove', (e) => {
+        e.preventDefault();
+        if (!throttleActive) return;
+        updateThrottle(e.clientY);
+    });
+    tTrack.addEventListener('pointerup', (e) => { e.preventDefault(); throttleActive = false; resetThrottle(); });
+    tTrack.addEventListener('pointercancel', () => { throttleActive = false; resetThrottle(); });
+    tTrack.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+
+    // --- Steering slider (horizontal: left/right) ---
+    const sTrack = document.getElementById('steering-track');
+    const sThumb = document.getElementById('steering-thumb');
+    const sValue = document.getElementById('steering-value');
+
+    function updateSteering(clientX) {
+        const rect = sTrack.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const maxDist = rect.width / 2 - 24;
+
+        let dx = clientX - centerX;
+        dx = constrain(dx, -maxDist, maxDist);
+        steering = dx / maxDist;
+
+        const thumbX = 50 + (steering * 46);
+        sThumb.style.left = thumbX + '%';
+
+        const pctLabel = Math.round(steering * 100);
+        sValue.textContent = (pctLabel > 0 ? 'R' : pctLabel < 0 ? 'L' : '') + Math.abs(pctLabel);
+        applyDrive();
+    }
+
+    function resetSteering() {
+        steering = 0;
+        sThumb.style.left = '50%';
+        sValue.textContent = '0';
+        applyDrive();
+    }
+
+    sTrack.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        steeringActive = true;
+        sTrack.setPointerCapture(e.pointerId);
+        updateSteering(e.clientX);
+    });
+    sTrack.addEventListener('pointermove', (e) => {
+        e.preventDefault();
+        if (!steeringActive) return;
+        updateSteering(e.clientX);
+    });
+    sTrack.addEventListener('pointerup', (e) => { e.preventDefault(); steeringActive = false; resetSteering(); });
+    sTrack.addEventListener('pointercancel', () => { steeringActive = false; resetSteering(); });
+    sTrack.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+
+    // --- Brake button ---
+    const brakeBtn = document.getElementById('brake-btn');
+    brakeBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        braking = true;
+        brakeBtn.classList.add('active');
+        throttle = 0;
+        steering = 0;
+        resetThrottle();
+        resetSteering();
+        sendBrake();
+    });
+    brakeBtn.addEventListener('pointerup', () => {
+        braking = false;
+        brakeBtn.classList.remove('active');
+        sendStop();
+    });
+    brakeBtn.addEventListener('pointercancel', () => {
+        braking = false;
+        brakeBtn.classList.remove('active');
+        sendStop();
     });
 
-    base.addEventListener('pointermove', (e) => {
-        if (!active) return;
-        updateJoystick(e.clientX, e.clientY);
-    });
-
-    base.addEventListener('pointerup', () => { active = false; resetJoystick(); });
-    base.addEventListener('pointercancel', () => { active = false; resetJoystick(); });
+    // --- Mix throttle + steering to differential drive ---
+    function applyDrive() {
+        if (braking || currentMode !== 'drive') return;
+        const tRPM = throttle * MAX_RPM;
+        const sRPM = steering * MAX_RPM * 0.7;  // Steering slightly less aggressive than throttle
+        targetLeft = Math.round(constrain(tRPM + sRPM, -MAX_RPM, MAX_RPM));
+        targetRight = Math.round(constrain(tRPM - sRPM, -MAX_RPM, MAX_RPM));
+    }
 })();
 
 // ============================================================================
@@ -175,17 +277,15 @@ document.querySelectorAll('.tab').forEach(tab => {
             const centerY = rect.top + rect.height / 2;
             const maxDist = rect.height / 2 - 10;
 
-            let dy = centerY - clientY;  // Up = positive
+            let dy = centerY - clientY;
             dy = constrain(dy, -maxDist, maxDist);
 
-            const pct = dy / maxDist;    // -1 to +1
+            const pct = dy / maxDist;
             const rpm = Math.round(pct * MAX_RPM);
 
-            // Position thumb
-            const thumbY = 50 - (pct * 50);  // 0% = top, 50% = center, 100% = bottom
+            const thumbY = 50 - (pct * 50);
             thumb.style.top = `${thumbY}%`;
 
-            // Update fill
             if (pct >= 0) {
                 fill.style.bottom = '50%';
                 fill.style.top = 'auto';
@@ -219,18 +319,21 @@ document.querySelectorAll('.tab').forEach(tab => {
         }
 
         track.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
             active = true;
             track.setPointerCapture(e.pointerId);
             updateSlider(e.clientY);
         });
 
         track.addEventListener('pointermove', (e) => {
+            e.preventDefault();
             if (!active) return;
             updateSlider(e.clientY);
         });
 
-        track.addEventListener('pointerup', () => { active = false; resetSlider(); });
+        track.addEventListener('pointerup', (e) => { e.preventDefault(); active = false; resetSlider(); });
         track.addEventListener('pointercancel', () => { active = false; resetSlider(); });
+        track.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
     });
 })();
 
@@ -253,89 +356,26 @@ function constrain(val, min, max) {
 }
 
 // ============================================================================
-// Firmware Upload
-// ============================================================================
-
-function initFirmwareUpload() {
-    setupUpload('esp32-file', 'esp32-upload-btn', 'esp32-progress', '/api/ota/esp32');
-    setupUpload('avr-file', 'avr-upload-btn', 'avr-progress', '/api/ota/avr');
-}
-
-function setupUpload(fileId, btnId, progressId, endpoint) {
-    const btn = document.getElementById(btnId);
-    const progress = document.getElementById(progressId);
-
-    btn.addEventListener('click', async () => {
-        const fileInput = document.getElementById(fileId);
-        const file = fileInput.files[0];
-        if (!file) {
-            progress.textContent = 'No file selected';
-            progress.className = 'fw-progress error';
-            return;
-        }
-
-        btn.disabled = true;
-        progress.textContent = 'Uploading...';
-        progress.className = 'fw-progress';
-
-        try {
-            const formData = new FormData();
-            formData.append('firmware', file);
-
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', `${API_BASE}${endpoint}`);
-
-            xhr.upload.onprogress = (e) => {
-                if (e.lengthComputable) {
-                    const pct = Math.round((e.loaded / e.total) * 100);
-                    progress.textContent = `Uploading... ${pct}%`;
-                }
-            };
-
-            xhr.onload = () => {
-                try {
-                    const res = JSON.parse(xhr.responseText);
-                    if (res.ok) {
-                        progress.textContent = res.msg || `Success! ${res.size ? res.size + ' bytes' : ''}`;
-                        progress.className = 'fw-progress';
-                    } else {
-                        progress.textContent = `Error: ${res.error}`;
-                        progress.className = 'fw-progress error';
-                    }
-                } catch {
-                    progress.textContent = xhr.status === 200 ? 'Done!' : `HTTP ${xhr.status}`;
-                    progress.className = xhr.status === 200 ? 'fw-progress' : 'fw-progress error';
-                }
-                btn.disabled = false;
-            };
-
-            xhr.onerror = () => {
-                // After ESP32 OTA, connection drops during reboot - that's expected
-                if (endpoint.includes('esp32')) {
-                    progress.textContent = 'Rebooting ESP32... reload page in 10s';
-                    progress.className = 'fw-progress';
-                } else {
-                    progress.textContent = 'Upload failed (connection error)';
-                    progress.className = 'fw-progress error';
-                }
-                btn.disabled = false;
-            };
-
-            xhr.send(formData);
-        } catch (e) {
-            progress.textContent = `Error: ${e.message}`;
-            progress.className = 'fw-progress error';
-            btn.disabled = false;
-        }
-    });
-}
-
-// ============================================================================
 // Init
 // ============================================================================
+
+// Prevent all default touch behaviors (pull-to-refresh, scroll, zoom)
+document.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) e.preventDefault(); // prevent pinch zoom
+}, { passive: false });
+
+// Request fullscreen on first tap (hides browser chrome + Android nav bar)
+let fullscreenRequested = false;
+document.addEventListener('click', () => {
+    if (fullscreenRequested) return;
+    fullscreenRequested = true;
+    const el = document.documentElement;
+    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (rfs) rfs.call(el).catch(() => {});
+}, { once: false });
 
 initStream();
 startCommandLoop();
 statusTimer = setInterval(fetchStatus, STATUS_INTERVAL);
 fetchStatus();
-initFirmwareUpload();

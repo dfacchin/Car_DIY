@@ -2,9 +2,12 @@
 #include "config.h"
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <WebServer.h>
+#include <WiFiClient.h>
 
-static WebServer stream_server(STREAM_PORT);
+// Use raw WiFiServer instead of WebServer for streaming —
+// this runs in its own FreeRTOS task so it won't block the main loop.
+static WiFiServer stream_server(STREAM_PORT);
+static TaskHandle_t stream_task_handle = NULL;
 
 bool camera_init() {
     camera_config_t config;
@@ -30,14 +33,13 @@ bool camera_init() {
     config.pixel_format = PIXFORMAT_JPEG;
     config.grab_mode = CAMERA_GRAB_LATEST;
 
-    // Use PSRAM for frame buffers if available
     if (psramFound()) {
         config.frame_size = CAM_FRAME_SIZE;
         config.jpeg_quality = CAM_JPEG_QUALITY;
         config.fb_count = CAM_FB_COUNT;
         config.fb_location = CAMERA_FB_IN_PSRAM;
     } else {
-        config.frame_size = FRAMESIZE_QVGA;    // Fallback to 320x240
+        config.frame_size = FRAMESIZE_QVGA;
         config.jpeg_quality = 15;
         config.fb_count = 1;
         config.fb_location = CAMERA_FB_IN_DRAM;
@@ -49,7 +51,6 @@ bool camera_init() {
         return false;
     }
 
-    // Adjust sensor settings for better streaming
     sensor_t *s = esp_camera_sensor_get();
     if (s) {
         s->set_framesize(s, CAM_FRAME_SIZE);
@@ -67,43 +68,66 @@ bool camera_init() {
 #define STREAM_CONTENT_TYPE "multipart/x-mixed-replace;boundary=" STREAM_BOUNDARY
 #define STREAM_PART_HEADER  "--" STREAM_BOUNDARY "\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n"
 
-static void handle_stream() {
-    WiFiClient client = stream_server.client();
-
-    stream_server.sendContent("HTTP/1.1 200 OK\r\n"
-                               "Content-Type: " STREAM_CONTENT_TYPE "\r\n"
-                               "Access-Control-Allow-Origin: *\r\n"
-                               "\r\n");
+static void stream_one_client(WiFiClient &client) {
+    client.print("HTTP/1.1 200 OK\r\n"
+                 "Content-Type: " STREAM_CONTENT_TYPE "\r\n"
+                 "Access-Control-Allow-Origin: *\r\n"
+                 "Connection: close\r\n"
+                 "\r\n");
 
     while (client.connected()) {
         camera_fb_t *fb = esp_camera_fb_get();
-        if (!fb) {
-            Serial.println("Camera capture failed");
-            break;
-        }
+        if (!fb) break;
 
         char part_header[128];
         int header_len = snprintf(part_header, sizeof(part_header), STREAM_PART_HEADER, fb->len);
 
-        client.write((const uint8_t *)part_header, header_len);
-        client.write(fb->buf, fb->len);
+        if (client.write((const uint8_t *)part_header, header_len) == 0) {
+            esp_camera_fb_return(fb);
+            break;
+        }
+        if (client.write(fb->buf, fb->len) == 0) {
+            esp_camera_fb_return(fb);
+            break;
+        }
         client.write("\r\n", 2);
 
         esp_camera_fb_return(fb);
+        vTaskDelay(pdMS_TO_TICKS(10));  // ~30fps max, yield to other tasks
+    }
+    client.stop();
+}
 
-        if (!client.connected()) break;
+// FreeRTOS task that runs independently on core 0
+static void stream_task(void *param) {
+    stream_server.begin();
+    Serial.printf("Stream server started on port %d (task on core %d)\n",
+                  STREAM_PORT, xPortGetCoreID());
 
-        delay(10);  // ~30fps max, yields to other tasks
+    for (;;) {
+        WiFiClient client = stream_server.available();
+        if (client) {
+            stream_one_client(client);
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
     }
 }
 
 void camera_stream_start() {
-    stream_server.on("/stream", HTTP_GET, handle_stream);
-    stream_server.begin();
-    Serial.printf("Stream server started on port %d\n", STREAM_PORT);
+    // Run stream server on core 0 (main loop runs on core 1)
+    xTaskCreatePinnedToCore(
+        stream_task,
+        "stream",
+        4096,           // Stack size
+        NULL,
+        1,              // Priority (low)
+        &stream_task_handle,
+        0               // Core 0
+    );
 }
 
-// Must be called from loop() to handle stream clients
+// No longer needed in main loop — stream runs in its own task
 void camera_stream_handle() {
-    stream_server.handleClient();
+    // No-op: stream is handled by FreeRTOS task
 }

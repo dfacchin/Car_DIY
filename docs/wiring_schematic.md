@@ -47,10 +47,14 @@ IMPORTANT: All GND connections must be tied together!
 ```
 ESP32-CAM              Arduino Pro Mini 3.3V
 ─────────              ─────────────────────
-GPIO 1 (TX) ──────────── Pin 0 (RX)
-GPIO 3 (RX) ──────────── Pin 1 (TX)
-GPIO 2      ──────────── RESET  (for OTA programming)
+GPIO 14 (TX, Serial2) ── Pin 0 (RX)     Motor UART
+GPIO 15 (RX, Serial2) ── Pin 1 (TX)     Motor UART
+GPIO 2                ── RESET           OTA programming
 GND ──────────────────── GND
+
+UART0 (GPIO 1/3) is reserved for USB debug output.
+Motor communication uses Serial2 remapped to GPIO 14/15
+(normally the SD card CLK/CMD pins, free since SD is unused).
 
 No level shifter needed - both are 3.3V logic.
 GPIO 2 → RESET allows the ESP32 to reprogram the Arduino
@@ -128,8 +132,12 @@ Pin 6: Encoder Phase B
    Set alarm to 3.3V per cell (9.9V total). Discharging below this damages the battery.
 
 3. **Disconnect UART for programming:** Arduino Pro Mini uses pins 0/1 for both
-   UART and USB programming. Disconnect ESP32-CAM TX/RX wires when uploading
+   UART and USB programming. Disconnect ESP32-CAM GPIO 14/15 wires when uploading
    firmware to the Arduino via FTDI adapter.
 
 4. **ESP32-CAM programming:** Use an FTDI adapter connected to GPIO 1 (TX),
    GPIO 3 (RX), and GND. Pull GPIO 0 to GND during upload, then release for normal boot.
+   GPIO 1/3 are the USB debug UART, not the motor UART.
+
+5. **WiFi:** The ESP32 creates an open WiFi AP with SSID `Car_XXXXXXXX`
+   (unique per chip, derived from MAC address). No password. IP: 192.168.4.1.

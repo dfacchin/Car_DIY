@@ -52,13 +52,14 @@ void motor_set_b(int16_t power) {
 }
 
 void motor_brake() {
-    // Active brake: both direction pins HIGH
+    // Active brake: both direction pins HIGH + full PWM
+    // This shorts motor windings through the H-bridge, locking wheels
     digitalWrite(PIN_IN1, HIGH);
     digitalWrite(PIN_IN2, HIGH);
-    analogWrite(PIN_ENA, 0);
+    analogWrite(PIN_ENA, 255);
     digitalWrite(PIN_IN3, HIGH);
     digitalWrite(PIN_IN4, HIGH);
-    analogWrite(PIN_ENB, 0);
+    analogWrite(PIN_ENB, 255);
 }
 
 void motor_coast() {

@@ -15,10 +15,12 @@ Communication between ESP32-CAM and Arduino Pro Mini 3.3V.
 ## Connections
 
 ```
-ESP32-CAM GPIO 1 (TX) ──── Arduino Pin 0 (RX)
-ESP32-CAM GPIO 3 (RX) ──── Arduino Pin 1 (TX)
-         GND ──────────────── GND
+ESP32-CAM GPIO 14 (TX, Serial2) ──── Arduino Pin 0 (RX)
+ESP32-CAM GPIO 15 (RX, Serial2) ──── Arduino Pin 1 (TX)
+                  GND ───────────────── GND
 ```
+
+UART0 (GPIO 1/3) is reserved for USB debug. Motor comm uses Serial2 remapped to GPIO 14/15.
 
 ## Packet Format (8 bytes)
 
@@ -49,6 +51,30 @@ Emergency stop. All payload bytes ignored. Both motors brake immediately.
 ### 0x03 PING
 Heartbeat. Arduino responds with PONG. Also resets the command timeout timer.
 
+### 0x04 GET_PID
+Request current PID parameters. No payload. Arduino responds with five RSP_PID_PARAM packets.
+
+### 0x05 SET_PID
+Set one PID parameter.
+
+| Payload bytes | Type | Description |
+|--------------|------|-------------|
+| 0 | uint8_t | Parameter ID (see PID Parameters table) |
+| 1 | uint8_t | Reserved (0) |
+| 2-3 | int16_t | Value (fixed-point *100 for Kp/Ki/Kd, raw int for imax/ramp) |
+
+Arduino echoes back RSP_PID_PARAM to confirm.
+
+### 0x06 SAVE_PID
+Save current PID parameters to EEPROM. No payload. Arduino responds with PONG.
+
+### 0x07 BRAKE
+Active brake: lock wheels by shorting motor windings through H-bridge (IN1=H, IN2=H, ENA=255).
+Different from STOP which coasts (power cut, wheels free). No payload.
+
+### 0x08 GET_DEBUG
+Toggle extended debug reporting. When enabled, Arduino sends RSP_DEBUG and RSP_ENCODERS alongside STATUS at 10Hz. No payload.
+
 ## Responses (Arduino -> ESP32)
 
 ### 0x81 STATUS
@@ -77,6 +103,45 @@ Sent when an error condition is detected.
 
 ### 0x83 PONG
 Response to PING. Payload mirrors the PING packet.
+
+### 0x84 PID_PARAM
+Single PID parameter value.
+
+| Payload bytes | Type | Description |
+|--------------|------|-------------|
+| 0 | uint8_t | Parameter ID (see PID Parameters table) |
+| 1 | uint8_t | Reserved |
+| 2-3 | int16_t | Value |
+
+### 0x85 DEBUG
+Extended debug status. Sent when debug mode is enabled (see CMD_GET_DEBUG).
+
+| Payload bytes | Type | Description |
+|--------------|------|-------------|
+| 0 | int8_t | PWM A / 2 (0..127) |
+| 1 | int8_t | PWM B / 2 (0..127) |
+| 2 | int8_t | Target RPM A (clamped to -127..127) |
+| 3 | int8_t | Target RPM B (clamped to -127..127) |
+
+### 0x86 ENCODERS
+Encoder cumulative tick counters (debug only, wrapping int16).
+
+| Payload bytes | Type | Description |
+|--------------|------|-------------|
+| 0-1 | int16_t | Encoder A total ticks |
+| 2-3 | int16_t | Encoder B total ticks |
+
+## PID Parameter IDs
+
+Used in CMD_SET_PID and RSP_PID_PARAM payloads.
+
+| ID | Name | Encoding |
+|----|------|----------|
+| 0x01 | PID_PARAM_KP | Fixed-point: actual = value / 100.0 |
+| 0x02 | PID_PARAM_KI | Fixed-point: actual = value / 100.0 |
+| 0x03 | PID_PARAM_KD | Fixed-point: actual = value / 100.0 |
+| 0x04 | PID_PARAM_IMAX | Raw integer (anti-windup max) |
+| 0x05 | PID_PARAM_RAMP | Raw integer (RPM change per PID cycle) |
 
 ## Timing
 

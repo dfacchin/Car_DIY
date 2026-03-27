@@ -3,10 +3,11 @@
 
 // ============================================================================
 // WiFi AP Configuration
+// SSID is generated at runtime from MAC: Car_AABBCCDD (last 4 bytes of MAC)
+// No password (open network)
 // ============================================================================
 
-#define WIFI_AP_SSID        "CarDIY"
-#define WIFI_AP_PASSWORD    "cardiy1234"     // Min 8 characters
+#define WIFI_AP_SSID_PREFIX "Car_"           // Prefix + last 4 MAC bytes hex
 #define WIFI_AP_CHANNEL     1
 #define WIFI_AP_MAX_CONN    2
 
@@ -32,16 +33,19 @@
 #define CAM_PIN_HREF    23
 #define CAM_PIN_PCLK    22
 
-// Stream settings
-#define CAM_FRAME_SIZE  FRAMESIZE_VGA       // 640x480
-#define CAM_JPEG_QUALITY    12              // 0-63, lower = better quality
+// Stream settings (QVGA for low latency control, VGA for higher quality)
+#define CAM_FRAME_SIZE  FRAMESIZE_QVGA      // 320x240 — fast for control
+#define CAM_JPEG_QUALITY    16              // 0-63, higher = smaller/faster
 #define CAM_FB_COUNT    2                   // Frame buffer count (2 for streaming)
 
 // ============================================================================
-// UART to Motor Controller
+// UART to Motor Controller (Serial2, remapped to SD card pins)
+// GPIO 14 = TX to Arduino RX, GPIO 15 = RX from Arduino TX
+// Frees UART0 (GPIO 1/3) for USB debug output
 // ============================================================================
 
-#define MOTOR_UART_NUM      UART_NUM_0      // GPIO 1 (TX), GPIO 3 (RX)
+#define MOTOR_UART_TX       14              // ESP32 TX -> Arduino RX
+#define MOTOR_UART_RX       15              // ESP32 RX <- Arduino TX
 #define MOTOR_CMD_RATE_MS   50              // Send commands at 20 Hz
 #define MOTOR_PING_RATE_MS  200             // Heartbeat interval
 

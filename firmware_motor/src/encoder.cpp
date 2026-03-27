@@ -1,28 +1,35 @@
 #include "encoder.h"
 #include "config.h"
 
-// Volatile tick counters updated by ISRs
+// Volatile tick counters updated by ISRs (reset by PID each cycle)
 static volatile long ticks_a = 0;
 static volatile long ticks_b = 0;
+
+// Cumulative counters (debug only, never reset, start at 0 on boot)
+static volatile long total_ticks_a = 0;
+static volatile long total_ticks_b = 0;
 
 // ============================================================================
 // Encoder A - Hardware interrupts (INT0, INT1)
 // ============================================================================
 
 static void isr_enc_a_phase_a() {
-    // Quadrature decoding: check phase B to determine direction
     if (digitalRead(PIN_ENC_A_PHASE_A) == digitalRead(PIN_ENC_A_PHASE_B)) {
         ticks_a--;
+        total_ticks_a--;
     } else {
         ticks_a++;
+        total_ticks_a++;
     }
 }
 
 static void isr_enc_a_phase_b() {
     if (digitalRead(PIN_ENC_A_PHASE_A) == digitalRead(PIN_ENC_A_PHASE_B)) {
         ticks_a++;
+        total_ticks_a++;
     } else {
         ticks_a--;
+        total_ticks_a--;
     }
 }
 
@@ -46,6 +53,7 @@ ISR(PCINT2_vect) {
             case 0b0010: case 0b1011: case 0b1101: case 0b0100: dir = -1; break;
         }
         ticks_b += dir;
+        total_ticks_b += dir;
         prev_enc_b_state = curr;
     }
 }
@@ -97,4 +105,18 @@ void encoder_reset_b() {
     noInterrupts();
     ticks_b = 0;
     interrupts();
+}
+
+long encoder_get_total_a() {
+    noInterrupts();
+    long val = total_ticks_a;
+    interrupts();
+    return val;
+}
+
+long encoder_get_total_b() {
+    noInterrupts();
+    long val = total_ticks_b;
+    interrupts();
+    return val;
 }

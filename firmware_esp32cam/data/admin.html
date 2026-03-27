@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car DIY - Admin Debug</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <header>
+        <h1>Car DIY Admin</h1>
+        <div id="conn-status" class="status-badge disconnected">ESP32: --</div>
+        <div id="motor-status" class="status-badge disconnected">Arduino: --</div>
+        <a href="/" class="back-link">Back to Control</a>
+    </header>
+
+    <div class="panels">
+        <!-- Live Status Panel -->
+        <section class="panel">
+            <h2>Live Status</h2>
+            <div class="status-grid">
+                <div class="stat-card">
+                    <label>Left RPM</label>
+                    <span id="s-left-rpm" class="val">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>Right RPM</label>
+                    <span id="s-right-rpm" class="val">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>Target L</label>
+                    <span id="s-target-l" class="val dim">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>Target R</label>
+                    <span id="s-target-r" class="val dim">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>PWM L</label>
+                    <span id="s-pwm-l" class="val">--</span>
+                    <div class="bar"><div id="bar-pwm-l" class="bar-fill"></div></div>
+                </div>
+                <div class="stat-card">
+                    <label>PWM R</label>
+                    <span id="s-pwm-r" class="val">--</span>
+                    <div class="bar"><div id="bar-pwm-r" class="bar-fill"></div></div>
+                </div>
+                <div class="stat-card">
+                    <label>Enc L</label>
+                    <span id="s-enc-l" class="val mono">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>Enc R</label>
+                    <span id="s-enc-r" class="val mono">--</span>
+                </div>
+                <div class="stat-card wide">
+                    <label>Error</label>
+                    <span id="s-error" class="val">None</span>
+                </div>
+                <div class="stat-card">
+                    <label>Uptime</label>
+                    <span id="s-uptime" class="val mono">--</span>
+                </div>
+                <div class="stat-card">
+                    <label>Last Pong</label>
+                    <span id="s-pong-age" class="val mono">--</span>
+                </div>
+            </div>
+            <div class="panel-actions">
+                <button id="btn-debug-toggle" class="btn">Enable Debug Stream</button>
+                <label class="rate-label">Poll rate:
+                    <select id="poll-rate">
+                        <option value="100">100ms</option>
+                        <option value="200" selected>200ms</option>
+                        <option value="500">500ms</option>
+                        <option value="1000">1s</option>
+                    </select>
+                </label>
+            </div>
+        </section>
+
+        <!-- Drive Settings Panel -->
+        <section class="panel">
+            <h2>Drive Settings</h2>
+            <div class="pid-row">
+                <label style="width:80px">Coast mode</label>
+                <label class="toggle-label" style="flex:1">
+                    <input type="checkbox" id="coast-checkbox">
+                    <span class="toggle-text">Off: throttle release = PID brakes to 0. On: throttle release = wheels free, car rolls on inertia.</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- PID Tuning Panel -->
+        <section class="panel">
+            <h2>PID Tuning</h2>
+            <div class="pid-grid">
+                <div class="pid-row">
+                    <label>Kp</label>
+                    <input type="number" id="pid-kp" step="0.01" min="0" max="99.99" value="2.00">
+                    <button class="btn sm" onclick="setPid('kp')">Set</button>
+                </div>
+                <div class="pid-row">
+                    <label>Ki</label>
+                    <input type="number" id="pid-ki" step="0.01" min="0" max="99.99" value="0.50">
+                    <button class="btn sm" onclick="setPid('ki')">Set</button>
+                </div>
+                <div class="pid-row">
+                    <label>Kd</label>
+                    <input type="number" id="pid-kd" step="0.01" min="0" max="99.99" value="0.10">
+                    <button class="btn sm" onclick="setPid('kd')">Set</button>
+                </div>
+                <div class="pid-row">
+                    <label>I Max</label>
+                    <input type="number" id="pid-imax" step="1" min="0" max="1000" value="200">
+                    <button class="btn sm" onclick="setPid('imax')">Set</button>
+                </div>
+                <div class="pid-row">
+                    <label>Ramp</label>
+                    <input type="number" id="pid-ramp" step="1" min="1" max="50" value="10">
+                    <button class="btn sm" onclick="setPid('ramp')">Set</button>
+                </div>
+            </div>
+            <div class="panel-actions">
+                <button id="btn-pid-load" class="btn" onclick="loadPid()">Load from Motor</button>
+                <button id="btn-pid-set-all" class="btn accent" onclick="setAllPid()">Set All</button>
+                <button id="btn-pid-save" class="btn danger" onclick="savePid()">Save to EEPROM</button>
+            </div>
+        </section>
+
+        <!-- Test Commands Panel -->
+        <section class="panel">
+            <h2>Test Commands</h2>
+            <div class="test-grid">
+                <div class="test-row">
+                    <label>Left RPM</label>
+                    <input type="range" id="test-left" min="-130" max="130" value="0">
+                    <span id="test-left-val" class="mono">0</span>
+                </div>
+                <div class="test-row">
+                    <label>Right RPM</label>
+                    <input type="range" id="test-right" min="-130" max="130" value="0">
+                    <span id="test-right-val" class="mono">0</span>
+                </div>
+            </div>
+            <div class="panel-actions">
+                <button id="btn-test-send" class="btn accent" onclick="sendTestCmd()">Send RPM</button>
+                <button id="btn-test-stop" class="btn danger" onclick="sendStop()">STOP</button>
+                <button class="btn" onclick="resetSliders()">Reset to 0</button>
+            </div>
+            <h3>Quick Tests</h3>
+            <div class="quick-tests">
+                <button class="btn sm" onclick="quickTest(50,50)">Fwd 50</button>
+                <button class="btn sm" onclick="quickTest(100,100)">Fwd 100</button>
+                <button class="btn sm" onclick="quickTest(-50,-50)">Rev 50</button>
+                <button class="btn sm" onclick="quickTest(50,-50)">Spin L</button>
+                <button class="btn sm" onclick="quickTest(-50,50)">Spin R</button>
+                <button class="btn sm" onclick="quickTest(80,40)">Curve R</button>
+                <button class="btn sm danger" onclick="sendStop()">STOP</button>
+            </div>
+        </section>
+
+        <!-- RPM Chart Panel -->
+        <section class="panel wide-panel">
+            <h2>RPM Chart</h2>
+            <canvas id="rpm-chart" width="600" height="200"></canvas>
+            <div class="chart-legend">
+                <span class="legend-item"><span class="dot" style="background:#4cc9f0"></span>Left RPM</span>
+                <span class="legend-item"><span class="dot" style="background:#f72585"></span>Right RPM</span>
+                <span class="legend-item"><span class="dot" style="background:#4cc9f080"></span>Target L</span>
+                <span class="legend-item"><span class="dot" style="background:#f7258580"></span>Target R</span>
+            </div>
+        </section>
+
+        <!-- Firmware Update Panel -->
+        <section class="panel">
+            <h2>Firmware Update</h2>
+            <div class="fw-section">
+                <h3>ESP32-CAM (OTA)</h3>
+                <p>Upload .bin firmware file</p>
+                <input type="file" id="esp32-file" accept=".bin">
+                <button class="btn accent" id="esp32-upload-btn">Upload ESP32</button>
+                <div class="fw-progress" id="esp32-progress"></div>
+            </div>
+            <div class="fw-section" style="margin-top:12px">
+                <h3>Arduino Pro Mini</h3>
+                <p>Upload .hex sketch file</p>
+                <input type="file" id="avr-file" accept=".hex">
+                <button class="btn accent" id="avr-upload-btn">Upload Arduino</button>
+                <div class="fw-progress" id="avr-progress"></div>
+            </div>
+        </section>
+
+        <!-- Log Console -->
+        <section class="panel wide-panel">
+            <h2>Log Console</h2>
+            <div id="log-console" class="log-console"></div>
+            <div class="panel-actions">
+                <button class="btn sm" onclick="clearLog()">Clear</button>
+                <label><input type="checkbox" id="log-auto-scroll" checked> Auto-scroll</label>
+            </div>
+        </section>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

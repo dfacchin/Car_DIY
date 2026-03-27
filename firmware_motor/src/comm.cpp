@@ -69,3 +69,34 @@ void comm_send_pong() {
     proto_build(&pkt, RSP_PONG, 0, 0);
     comm_send(&pkt);
 }
+
+void comm_send_pid_param(uint8_t param_id, int16_t value) {
+    proto_packet_t pkt;
+    proto_build_pid(&pkt, RSP_PID_PARAM, param_id, value);
+    comm_send(&pkt);
+}
+
+void comm_send_debug(uint8_t pwm_a, uint8_t pwm_b,
+                     int16_t target_a, int16_t target_b) {
+    proto_packet_t pkt;
+    pkt.start = PROTO_START_BYTE;
+    pkt.cmd = RSP_DEBUG;
+    pkt.payload.debug.pwm_a = (int8_t)(pwm_a / 2);
+    pkt.payload.debug.pwm_b = (int8_t)(pwm_b / 2);
+    pkt.payload.debug.target_a = (int8_t)constrain(target_a, -127, 127);
+    pkt.payload.debug.target_b = (int8_t)constrain(target_b, -127, 127);
+    pkt.crc = proto_crc8(&pkt.cmd, 5);
+    pkt.end = PROTO_END_BYTE;
+    comm_send(&pkt);
+}
+
+void comm_send_encoders(long total_a, long total_b) {
+    proto_packet_t pkt;
+    pkt.start = PROTO_START_BYTE;
+    pkt.cmd = RSP_ENCODERS;
+    pkt.payload.encoders.enc_a = (int16_t)(total_a & 0xFFFF);
+    pkt.payload.encoders.enc_b = (int16_t)(total_b & 0xFFFF);
+    pkt.crc = proto_crc8(&pkt.cmd, 5);
+    pkt.end = PROTO_END_BYTE;
+    comm_send(&pkt);
+}

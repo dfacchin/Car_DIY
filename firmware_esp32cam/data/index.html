@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="manifest.json">
     <title>Car DIY Controller</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -14,22 +19,45 @@
             <div id="status-overlay">
                 <span id="connection-status">Connecting...</span>
                 <span id="rpm-display">L: 0 | R: 0</span>
+                <a href="/admin" id="admin-link">Admin</a>
             </div>
         </div>
 
         <!-- Control Mode Tabs -->
         <div id="control-tabs">
-            <button class="tab active" data-mode="joystick">Joystick</button>
+            <button class="tab active" data-mode="drive">Drive</button>
             <button class="tab" data-mode="tank">Tank</button>
-            <button class="tab" data-mode="firmware">Firmware</button>
         </div>
 
-        <!-- Joystick Mode -->
-        <div id="joystick-mode" class="control-mode active">
-            <div id="joystick-container">
-                <div id="joystick-base">
-                    <div id="joystick-handle"></div>
+        <!-- Drive Mode: Throttle (left) | Brake (center-left) | Steering (right) -->
+        <div id="drive-mode" class="control-mode active">
+            <!-- Left: Throttle -->
+            <div class="drive-col">
+                <span class="drive-label">Throttle</span>
+                <div class="throttle-track" id="throttle-track">
+                    <div class="throttle-fill" id="throttle-fill"></div>
+                    <div class="throttle-thumb" id="throttle-thumb"></div>
+                    <div class="throttle-zero"></div>
                 </div>
+                <span id="throttle-value" class="drive-val mono">0</span>
+            </div>
+
+            <!-- Brake next to throttle -->
+            <div class="drive-col brake-col">
+                <button id="brake-btn">B<br>R<br>A<br>K<br>E</button>
+            </div>
+
+            <!-- Spacer -->
+            <div class="drive-spacer"></div>
+
+            <!-- Right: Steering -->
+            <div class="drive-col steer-col">
+                <span class="drive-label">Steer</span>
+                <div class="steering-track" id="steering-track">
+                    <div class="steering-thumb" id="steering-thumb"></div>
+                    <div class="steering-center"></div>
+                </div>
+                <span id="steering-value" class="drive-val mono">0</span>
             </div>
         </div>
 
@@ -55,28 +83,8 @@
             </div>
         </div>
 
-        <!-- Firmware Update Mode -->
-        <div id="firmware-mode" class="control-mode">
-            <div class="firmware-panel">
-                <div class="fw-section">
-                    <h3>ESP32-CAM (OTA)</h3>
-                    <p>Upload .bin firmware file</p>
-                    <input type="file" id="esp32-file" accept=".bin">
-                    <button class="fw-btn" id="esp32-upload-btn">Upload ESP32</button>
-                    <div class="fw-progress" id="esp32-progress"></div>
-                </div>
-                <div class="fw-section">
-                    <h3>Arduino Pro Mini</h3>
-                    <p>Upload .hex sketch file</p>
-                    <input type="file" id="avr-file" accept=".hex">
-                    <button class="fw-btn" id="avr-upload-btn">Upload Arduino</button>
-                    <div class="fw-progress" id="avr-progress"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Emergency Stop -->
-        <button id="stop-btn">STOP</button>
+        <!-- Emergency Stop (cuts all power, wheels free) -->
+        <button id="stop-btn">EMERGENCY OFF</button>
     </div>
 
     <script src="app.js"></script>

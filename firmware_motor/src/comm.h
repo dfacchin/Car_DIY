@@ -23,4 +23,14 @@ void comm_send_error(uint8_t error_code);
 // Send pong response
 void comm_send_pong();
 
+// Send PID parameter value (fixed-point: value = actual * 100)
+void comm_send_pid_param(uint8_t param_id, int16_t value);
+
+// Send extended debug status
+void comm_send_debug(uint8_t pwm_a, uint8_t pwm_b,
+                     int16_t target_a, int16_t target_b);
+
+// Send encoder cumulative tick counters (wrapping int16)
+void comm_send_encoders(long total_a, long total_b);
+
 #endif // COMM_H
