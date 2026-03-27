@@ -35,7 +35,10 @@ When modifying code, check:
 - Flutter app: `app_controller/`
 - All multi-byte protocol values are little-endian
 - PID values use fixed-point encoding (value * 100) over the wire for Kp/Ki/Kd
-- Motor UART: ESP32 Serial2 on GPIO 14 (TX) / GPIO 15 (RX). UART0 (GPIO 1/3) is for USB debug.
+- Motor UART: ESP32 Serial2 on GPIO 12 (TX) / GPIO 14 (RX). UART0 (GPIO 1/3) is for USB debug.
+- AVR RESET: GPIO 13 (not a strapping pin, uses INPUT mode normally).
+- Flash LED: GPIO 4.
+- No wires need disconnecting for ESP32 USB flashing.
 - WiFi AP: open network, unique SSID `Car_XXXX` generated from MAC address
 
 ## Build & Upload

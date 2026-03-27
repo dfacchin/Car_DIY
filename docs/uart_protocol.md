@@ -15,12 +15,12 @@ Communication between ESP32-CAM and Arduino Pro Mini 3.3V.
 ## Connections
 
 ```
-ESP32-CAM GPIO 14 (TX, Serial2) ──── Arduino Pin 0 (RX)
-ESP32-CAM GPIO 15 (RX, Serial2) ──── Arduino Pin 1 (TX)
+ESP32-CAM GPIO 12 (TX, Serial2) ──── Arduino Pin 0 (RX)
+ESP32-CAM GPIO 14 (RX, Serial2) ──── Arduino Pin 1 (TX)
                   GND ───────────────── GND
 ```
 
-UART0 (GPIO 1/3) is reserved for USB debug. Motor comm uses Serial2 remapped to GPIO 14/15.
+UART0 (GPIO 1/3) is reserved for USB debug. Motor comm uses Serial2 remapped to GPIO 12 (TX) / 14 (RX).
 
 ## Packet Format (8 bytes)
 

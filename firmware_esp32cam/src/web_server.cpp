@@ -81,8 +81,10 @@ static void handle_debug_status() {
 
     bool connected = motor_comm_is_connected();
     unsigned long pong_age = motor_comm_last_pong_age();
+    uint32_t tx_cnt = motor_comm_get_tx_count();
+    uint32_t rx_cnt = motor_comm_get_rx_count();
 
-    char json[384];
+    char json[448];
     snprintf(json, sizeof(json),
         "{\"left_rpm\":%d,\"right_rpm\":%d,"
         "\"target_left\":%d,\"target_right\":%d,"
@@ -90,14 +92,16 @@ static void handle_debug_status() {
         "\"pwm_a\":%d,\"pwm_b\":%d,"
         "\"enc_a\":%d,\"enc_b\":%d,"
         "\"error\":%d,\"uptime\":%lu,"
-        "\"motor_connected\":%s,\"pong_age\":%lu}",
+        "\"motor_connected\":%s,\"pong_age\":%lu,"
+        "\"tx_count\":%lu,\"rx_count\":%lu}",
         left_rpm, right_rpm,
         (int)target_a, (int)target_b,
         cmd_left_rpm, cmd_right_rpm,
         (int)pwm_a * 2, (int)pwm_b * 2,
         enc_a, enc_b,
         error, millis() / 1000,
-        connected ? "true" : "false", pong_age);
+        connected ? "true" : "false", pong_age,
+        tx_cnt, rx_cnt);
 
     server.send(200, "application/json", json);
 }

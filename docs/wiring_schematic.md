@@ -47,23 +47,28 @@ IMPORTANT: All GND connections must be tied together!
 ```
 ESP32-CAM              Arduino Pro Mini 3.3V
 ─────────              ─────────────────────
-GPIO 14 (TX, Serial2) ── Pin 0 (RX)     Motor UART
-GPIO 15 (RX, Serial2) ── Pin 1 (TX)     Motor UART
-GPIO 2                ── RESET           OTA programming
+GPIO 12 (TX, Serial2) ── Pin 0 (RX)     Motor UART
+GPIO 14 (RX, Serial2) ── Pin 1 (TX)     Motor UART
+GPIO 13               ── RESET           OTA programming
 GND ──────────────────── GND
 
 UART0 (GPIO 1/3) is reserved for USB debug output.
-Motor communication uses Serial2 remapped to GPIO 14/15
-(normally the SD card CLK/CMD pins, free since SD is unused).
+Motor communication uses Serial2 remapped to GPIO 12 (TX) / 14 (RX).
+
+Pin selection rationale:
+- GPIO 12 (TX): strapping pin, but ESP32 drives it as output so
+  Arduino can't affect boot. SD DATA2 pull-up on board is fine.
+- GPIO 14 (RX): not a strapping pin. Arduino TX idle HIGH is safe.
+- GPIO 13 (RESET): not a strapping pin. No need to disconnect for
+  ESP32 USB flashing.
 
 No level shifter needed - both are 3.3V logic.
-GPIO 2 → RESET allows the ESP32 to reprogram the Arduino
+GPIO 13 → RESET allows the ESP32 to reprogram the Arduino
 via the web interface (STK500v1 bootloader protocol).
 ```
 
-**Note on GPIO 2:** This pin must be LOW or floating during ESP32 boot.
-The Arduino RESET pin has a 10K pullup. If you have trouble flashing the
-ESP32 via USB, temporarily disconnect the GPIO 2 → RESET wire.
+**Note on GPIO 13 (RESET):** Uses INPUT mode normally (Arduino's 10K pull-up
+holds RESET HIGH). ESP32 only drives LOW momentarily to reset for programming.
 
 ### Arduino Pro Mini to L298N
 
@@ -132,7 +137,7 @@ Pin 6: Encoder Phase B
    Set alarm to 3.3V per cell (9.9V total). Discharging below this damages the battery.
 
 3. **Disconnect UART for programming:** Arduino Pro Mini uses pins 0/1 for both
-   UART and USB programming. Disconnect ESP32-CAM GPIO 14/15 wires when uploading
+   UART and USB programming. Disconnect ESP32-CAM GPIO 12/14 wires when uploading
    firmware to the Arduino via FTDI adapter.
 
 4. **ESP32-CAM programming:** Use an FTDI adapter connected to GPIO 1 (TX),

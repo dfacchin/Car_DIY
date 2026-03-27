@@ -25,7 +25,7 @@
 │    - WiFiServer on port 81 (MJPEG stream)                │
 │    - Camera frame capture + stream per client             │
 └──────────────┬───────────────────────────────────────────┘
-               │ UART 115200 8N1 (GPIO 14 TX, GPIO 15 RX)
+               │ UART 115200 8N1 (GPIO 12 TX, GPIO 14 RX)
 ┌──────────────┴───────────────────────────────────────────┐
 │  Arduino Pro Mini 3.3V 8MHz                              │
 │                                                          │
@@ -51,7 +51,7 @@ From `firmware_esp32cam/src/main.cpp`:
 1. Init USB debug serial (UART0, 115200)
 2. Configure flash LED (GPIO 4)
 3. Configure AVR reset pin (GPIO 2)
-4. Init motor UART (Serial2 on GPIO 14/15, 115200)
+4. Init motor UART (Serial2 on GPIO 12 TX / 14 RX, 115200)
 5. Init camera (OV2640, QVGA 320x240, JPEG quality 16)
 6. Build unique SSID from MAC: `Car_XXXX`
 7. Start WiFi AP (open, no password)

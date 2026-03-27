@@ -54,6 +54,10 @@ bool motor_comm_is_connected(unsigned long timeout_ms = 1000);
 // Get milliseconds since last pong received (0 = never)
 unsigned long motor_comm_last_pong_age();
 
+// Packet counters
+uint32_t motor_comm_get_tx_count();
+uint32_t motor_comm_get_rx_count();
+
 // PID param cache (populated by RSP_PID_PARAM responses)
 typedef struct {
     int16_t kp;     // *100 fixed point

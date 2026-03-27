@@ -24,13 +24,12 @@ void setup() {
     // Flash LED off
     pinMode(PIN_FLASH_LED, OUTPUT);
     digitalWrite(PIN_FLASH_LED, LOW);
-    Serial.println("[OK] Flash LED pin configured");
 
-    // Initialize AVR reset pin
+    // Initialize AVR reset pin (GPIO 2)
     avr_flash_init();
-    Serial.println("[OK] AVR flash pin configured");
+    Serial.println("[OK] AVR reset pin configured (GPIO 2)");
 
-    // Initialize motor UART (Serial2 on GPIO 14/15)
+    // Initialize motor UART (Serial2 on GPIO 12/13)
     motor_comm_init();
     Serial.println("[OK] Motor UART initialized");
 
@@ -70,10 +69,7 @@ void setup() {
     camera_stream_start();
     Serial.println("[OK] Camera stream task started");
 
-    // Brief flash to indicate ready
-    digitalWrite(PIN_FLASH_LED, HIGH);
-    delay(200);
-    digitalWrite(PIN_FLASH_LED, LOW);
+    // Ready
 
     last_ping_time = millis();
 

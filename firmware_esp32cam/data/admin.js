@@ -88,6 +88,8 @@ async function pollStatus() {
         if (data.pong_age !== undefined && data.pong_age > 0) {
             setText('s-pong-age', `${data.pong_age}ms ago`);
         }
+        setText('s-tx-count', data.tx_count);
+        setText('s-rx-count', data.rx_count);
 
         pushChart(data.left_rpm, data.right_rpm, data.target_left, data.target_right);
     } else {

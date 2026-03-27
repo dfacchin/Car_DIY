@@ -20,8 +20,12 @@ static int16_t last_enc_a = 0, last_enc_b = 0;
 static motor_pid_cache_t pid_cache = {0, 0, 0, 0, 0, false};
 
 // Connection tracking
-static unsigned long last_pong_time = 0;  // millis() when last PONG received
-static unsigned long last_any_rx_time = 0; // millis() when any valid packet received
+static unsigned long last_pong_time = 0;
+static unsigned long last_any_rx_time = 0;
+
+// Packet counters
+static uint32_t tx_count = 0;
+static uint32_t rx_count = 0;
 
 static uint8_t rx_buf[PROTO_PACKET_SIZE];
 static uint8_t rx_idx = 0;
@@ -32,52 +36,57 @@ void motor_comm_init() {
                   MOTOR_UART_TX, MOTOR_UART_RX, PROTO_BAUD_RATE);
 }
 
+static void motor_send(const proto_packet_t *pkt) {
+    MOTOR_SERIAL.write((const uint8_t *)pkt, PROTO_PACKET_SIZE);
+    tx_count++;
+}
+
 void motor_comm_set_rpm(int16_t left_rpm, int16_t right_rpm) {
     proto_packet_t pkt;
     proto_build(&pkt, CMD_SET_RPM, left_rpm, right_rpm);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_stop() {
     proto_packet_t pkt;
     proto_build(&pkt, CMD_STOP, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_brake() {
     proto_packet_t pkt;
     proto_build(&pkt, CMD_BRAKE, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_ping() {
     proto_packet_t pkt;
     proto_build(&pkt, CMD_PING, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_get_pid() {
     proto_packet_t pkt;
     proto_build_raw(&pkt, CMD_GET_PID, 0, 0, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_set_pid(uint8_t param_id, int16_t value) {
     proto_packet_t pkt;
     proto_build_pid(&pkt, CMD_SET_PID, param_id, value);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_save_pid() {
     proto_packet_t pkt;
     proto_build_raw(&pkt, CMD_SAVE_PID, 0, 0, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 void motor_comm_toggle_debug() {
     proto_packet_t pkt;
     proto_build_raw(&pkt, CMD_GET_DEBUG, 0, 0, 0, 0);
-    MOTOR_SERIAL.write((const uint8_t *)&pkt, PROTO_PACKET_SIZE);
+    motor_send(&pkt);
 }
 
 bool motor_comm_receive(proto_packet_t *pkt) {
@@ -103,6 +112,7 @@ bool motor_comm_receive(proto_packet_t *pkt) {
             memcpy(pkt, rx_buf, PROTO_PACKET_SIZE);
             if (proto_validate(pkt)) {
                 last_any_rx_time = millis();
+                rx_count++;
                 switch (pkt->cmd) {
                     case RSP_PONG:
                         last_pong_time = millis();
@@ -173,6 +183,9 @@ unsigned long motor_comm_last_pong_age() {
     if (last_pong_time == 0) return 0;
     return millis() - last_pong_time;
 }
+
+uint32_t motor_comm_get_tx_count() { return tx_count; }
+uint32_t motor_comm_get_rx_count() { return rx_count; }
 
 const motor_pid_cache_t *motor_comm_get_pid_cache() {
     return &pid_cache;

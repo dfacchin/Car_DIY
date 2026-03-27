@@ -60,8 +60,8 @@ static bool stk_wait_response(uint8_t expected1, uint8_t expected2, uint16_t tim
     unsigned long start = millis();
     uint8_t state = 0;
     while ((millis() - start) < timeout_ms) {
-        if (Serial.available()) {
-            uint8_t b = Serial.read();
+        if (Serial2.available()) {
+            uint8_t b = Serial2.read();
             if (state == 0 && b == expected1) state = 1;
             else if (state == 1 && b == expected2) return true;
             else return false;
@@ -73,11 +73,11 @@ static bool stk_wait_response(uint8_t expected1, uint8_t expected2, uint16_t tim
 static bool stk_get_sync() {
     for (int attempt = 0; attempt < 3; attempt++) {
         // Flush input
-        while (Serial.available()) Serial.read();
+        while (Serial2.available()) Serial2.read();
 
-        Serial.write(STK_GET_SYNC);
-        Serial.write(CRC_EOP);
-        Serial.flush();
+        Serial2.write(STK_GET_SYNC);
+        Serial2.write(CRC_EOP);
+        Serial2.flush();
 
         if (stk_wait_response(STK_INSYNC, STK_OK, 200)) {
             return true;
@@ -88,31 +88,31 @@ static bool stk_get_sync() {
 }
 
 static bool stk_load_address(uint16_t word_addr) {
-    Serial.write(STK_LOAD_ADDR);
-    Serial.write((uint8_t)(word_addr & 0xFF));
-    Serial.write((uint8_t)(word_addr >> 8));
-    Serial.write(CRC_EOP);
-    Serial.flush();
+    Serial2.write(STK_LOAD_ADDR);
+    Serial2.write((uint8_t)(word_addr & 0xFF));
+    Serial2.write((uint8_t)(word_addr >> 8));
+    Serial2.write(CRC_EOP);
+    Serial2.flush();
     return stk_wait_response(STK_INSYNC, STK_OK);
 }
 
 static bool stk_prog_page(const uint8_t *data, uint16_t len) {
-    Serial.write(STK_PROG_PAGE);
-    Serial.write((uint8_t)(len >> 8));
-    Serial.write((uint8_t)(len & 0xFF));
-    Serial.write('F');  // Flash memory type
+    Serial2.write(STK_PROG_PAGE);
+    Serial2.write((uint8_t)(len >> 8));
+    Serial2.write((uint8_t)(len & 0xFF));
+    Serial2.write('F');  // Flash memory type
     for (uint16_t i = 0; i < len; i++) {
-        Serial.write(data[i]);
+        Serial2.write(data[i]);
     }
-    Serial.write(CRC_EOP);
-    Serial.flush();
+    Serial2.write(CRC_EOP);
+    Serial2.flush();
     return stk_wait_response(STK_INSYNC, STK_OK, 1000);
 }
 
 static bool stk_leave_progmode() {
-    Serial.write(STK_LEAVE_PROG);
-    Serial.write(CRC_EOP);
-    Serial.flush();
+    Serial2.write(STK_LEAVE_PROG);
+    Serial2.write(CRC_EOP);
+    Serial2.flush();
     return stk_wait_response(STK_INSYNC, STK_OK);
 }
 
@@ -127,17 +127,19 @@ static bool flash_ok = false;
 static String flash_error = "";
 
 static void reset_avr() {
+    pinMode(PIN_AVR_RESET, OUTPUT);
     digitalWrite(PIN_AVR_RESET, LOW);
     delay(AVR_RESET_PULSE_MS);
-    digitalWrite(PIN_AVR_RESET, HIGH);
+    pinMode(PIN_AVR_RESET, INPUT);  // Release — Arduino pull-up restores HIGH
     delay(AVR_BOOT_DELAY_MS);
 }
 
 static bool do_flash() {
-    // Switch UART to bootloader baud rate
-    Serial.end();
-    Serial.begin(AVR_BOOTLOADER_BAUD);
+    // Switch motor UART to bootloader baud rate (57600 for Pro Mini 3.3V 8MHz)
+    Serial2.end();
+    Serial2.begin(AVR_BOOTLOADER_BAUD, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
     delay(50);
+    Serial.println("[AVR] Switching to bootloader baud, resetting Arduino...");
 
     // Reset Arduino into bootloader
     reset_avr();
@@ -145,10 +147,12 @@ static bool do_flash() {
     // Sync with bootloader
     if (!stk_get_sync()) {
         flash_error = "No sync with bootloader";
-        Serial.end();
-        Serial.begin(PROTO_BAUD_RATE);
+        Serial.println("[AVR] No sync!");
+        Serial2.end();
+        Serial2.begin(PROTO_BAUD_RATE, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
         return false;
     }
+    Serial.println("[AVR] Bootloader sync OK");
 
     // Program page by page
     uint32_t offset = 0;
@@ -183,9 +187,10 @@ static bool do_flash() {
     // Leave programming mode
     stk_leave_progmode();
 
-    // Restore normal baud rate
-    Serial.end();
-    Serial.begin(PROTO_BAUD_RATE);
+    // Restore motor UART baud rate
+    Serial2.end();
+    Serial2.begin(PROTO_BAUD_RATE, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
+    Serial.printf("[AVR] Flash %s\n", success ? "OK" : "FAILED");
 
     return success;
 }
@@ -272,8 +277,9 @@ static void handle_avr_result() {
 // ============================================================================
 
 void avr_flash_init() {
-    pinMode(PIN_AVR_RESET, OUTPUT);
-    digitalWrite(PIN_AVR_RESET, HIGH);  // Keep Arduino running (RESET is active LOW)
+    // Keep as INPUT — Arduino's 10K pull-up holds RESET HIGH.
+    // Only drive OUTPUT LOW when we need to reset for programming.
+    pinMode(PIN_AVR_RESET, INPUT);
 }
 
 void avr_flash_register(WebServer *server) {

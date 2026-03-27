@@ -44,8 +44,8 @@
 // Frees UART0 (GPIO 1/3) for USB debug output
 // ============================================================================
 
-#define MOTOR_UART_TX       14              // ESP32 TX -> Arduino RX
-#define MOTOR_UART_RX       15              // ESP32 RX <- Arduino TX
+#define MOTOR_UART_TX       12              // ESP32 TX -> Arduino RX (SD DATA2 pin)
+#define MOTOR_UART_RX       14              // ESP32 RX <- Arduino TX (SD CLK pin)
 #define MOTOR_CMD_RATE_MS   50              // Send commands at 20 Hz
 #define MOTOR_PING_RATE_MS  200             // Heartbeat interval
 
@@ -66,7 +66,7 @@
 // Arduino Pro Mini Programming (STK500v1 via UART)
 // ============================================================================
 
-#define PIN_AVR_RESET       2           // GPIO 2 -> Arduino RESET pin
+#define PIN_AVR_RESET       13          // GPIO 13 -> Arduino RESET pin (SD DATA3, not strapping)
 #define AVR_BOOTLOADER_BAUD 57600       // Pro Mini 3.3V 8MHz uses 57600
 #define AVR_PAGE_SIZE       128         // ATmega328P page size in bytes
 #define AVR_FLASH_SIZE      30720       // 30KB usable flash (2KB bootloader)
