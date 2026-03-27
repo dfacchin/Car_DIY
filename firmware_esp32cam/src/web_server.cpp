@@ -1,6 +1,8 @@
 #include "web_server.h"
 #include "config.h"
 #include "motor_comm.h"
+#include "ota.h"
+#include "avr_flash.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <LittleFS.h>
@@ -100,6 +102,10 @@ void web_server_init() {
     server.on("/api/stop", HTTP_POST, handle_stop);
     server.on("/api/stop", HTTP_GET, handle_stop);
     server.on("/api/status", HTTP_GET, handle_status);
+
+    // OTA and AVR flash endpoints
+    ota_init(&server);
+    avr_flash_register(&server);
 
     // Serve static files for everything else
     server.onNotFound([]() {

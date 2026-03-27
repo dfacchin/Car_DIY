@@ -21,6 +21,7 @@
         <div id="control-tabs">
             <button class="tab active" data-mode="joystick">Joystick</button>
             <button class="tab" data-mode="tank">Tank</button>
+            <button class="tab" data-mode="firmware">Firmware</button>
         </div>
 
         <!-- Joystick Mode -->
@@ -50,6 +51,26 @@
                         <div class="vertical-slider-thumb" id="right-thumb"></div>
                     </div>
                     <span id="right-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Firmware Update Mode -->
+        <div id="firmware-mode" class="control-mode">
+            <div class="firmware-panel">
+                <div class="fw-section">
+                    <h3>ESP32-CAM (OTA)</h3>
+                    <p>Upload .bin firmware file</p>
+                    <input type="file" id="esp32-file" accept=".bin">
+                    <button class="fw-btn" id="esp32-upload-btn">Upload ESP32</button>
+                    <div class="fw-progress" id="esp32-progress"></div>
+                </div>
+                <div class="fw-section">
+                    <h3>Arduino Pro Mini</h3>
+                    <p>Upload .hex sketch file</p>
+                    <input type="file" id="avr-file" accept=".hex">
+                    <button class="fw-btn" id="avr-upload-btn">Upload Arduino</button>
+                    <div class="fw-progress" id="avr-progress"></div>
                 </div>
             </div>
         </div>

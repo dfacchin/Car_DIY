@@ -253,6 +253,84 @@ function constrain(val, min, max) {
 }
 
 // ============================================================================
+// Firmware Upload
+// ============================================================================
+
+function initFirmwareUpload() {
+    setupUpload('esp32-file', 'esp32-upload-btn', 'esp32-progress', '/api/ota/esp32');
+    setupUpload('avr-file', 'avr-upload-btn', 'avr-progress', '/api/ota/avr');
+}
+
+function setupUpload(fileId, btnId, progressId, endpoint) {
+    const btn = document.getElementById(btnId);
+    const progress = document.getElementById(progressId);
+
+    btn.addEventListener('click', async () => {
+        const fileInput = document.getElementById(fileId);
+        const file = fileInput.files[0];
+        if (!file) {
+            progress.textContent = 'No file selected';
+            progress.className = 'fw-progress error';
+            return;
+        }
+
+        btn.disabled = true;
+        progress.textContent = 'Uploading...';
+        progress.className = 'fw-progress';
+
+        try {
+            const formData = new FormData();
+            formData.append('firmware', file);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API_BASE}${endpoint}`);
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    progress.textContent = `Uploading... ${pct}%`;
+                }
+            };
+
+            xhr.onload = () => {
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res.ok) {
+                        progress.textContent = res.msg || `Success! ${res.size ? res.size + ' bytes' : ''}`;
+                        progress.className = 'fw-progress';
+                    } else {
+                        progress.textContent = `Error: ${res.error}`;
+                        progress.className = 'fw-progress error';
+                    }
+                } catch {
+                    progress.textContent = xhr.status === 200 ? 'Done!' : `HTTP ${xhr.status}`;
+                    progress.className = xhr.status === 200 ? 'fw-progress' : 'fw-progress error';
+                }
+                btn.disabled = false;
+            };
+
+            xhr.onerror = () => {
+                // After ESP32 OTA, connection drops during reboot - that's expected
+                if (endpoint.includes('esp32')) {
+                    progress.textContent = 'Rebooting ESP32... reload page in 10s';
+                    progress.className = 'fw-progress';
+                } else {
+                    progress.textContent = 'Upload failed (connection error)';
+                    progress.className = 'fw-progress error';
+                }
+                btn.disabled = false;
+            };
+
+            xhr.send(formData);
+        } catch (e) {
+            progress.textContent = `Error: ${e.message}`;
+            progress.className = 'fw-progress error';
+            btn.disabled = false;
+        }
+    });
+}
+
+// ============================================================================
 // Init
 // ============================================================================
 
@@ -260,3 +338,4 @@ initStream();
 startCommandLoop();
 statusTimer = setInterval(fetchStatus, STATUS_INTERVAL);
 fetchStatus();
+initFirmwareUpload();

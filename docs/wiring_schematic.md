@@ -42,17 +42,24 @@
 IMPORTANT: All GND connections must be tied together!
 ```
 
-### ESP32-CAM to Arduino Pro Mini (UART)
+### ESP32-CAM to Arduino Pro Mini (UART + Programming)
 
 ```
 ESP32-CAM              Arduino Pro Mini 3.3V
 ─────────              ─────────────────────
 GPIO 1 (TX) ──────────── Pin 0 (RX)
 GPIO 3 (RX) ──────────── Pin 1 (TX)
+GPIO 2      ──────────── RESET  (for OTA programming)
 GND ──────────────────── GND
 
 No level shifter needed - both are 3.3V logic.
+GPIO 2 → RESET allows the ESP32 to reprogram the Arduino
+via the web interface (STK500v1 bootloader protocol).
 ```
+
+**Note on GPIO 2:** This pin must be LOW or floating during ESP32 boot.
+The Arduino RESET pin has a 10K pullup. If you have trouble flashing the
+ESP32 via USB, temporarily disconnect the GPIO 2 → RESET wire.
 
 ### Arduino Pro Mini to L298N
 

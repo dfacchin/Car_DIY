@@ -4,6 +4,7 @@
 #include "camera.h"
 #include "motor_comm.h"
 #include "web_server.h"
+#include "avr_flash.h"
 #include "protocol.h"
 
 // Forward declaration for stream handler
@@ -15,6 +16,9 @@ void setup() {
     // Flash LED off
     pinMode(PIN_FLASH_LED, OUTPUT);
     digitalWrite(PIN_FLASH_LED, LOW);
+
+    // Initialize AVR reset pin
+    avr_flash_init();
 
     // Initialize motor UART
     motor_comm_init();

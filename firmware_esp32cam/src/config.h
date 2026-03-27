@@ -58,4 +58,15 @@
 
 #define PIN_FLASH_LED   4
 
+// ============================================================================
+// Arduino Pro Mini Programming (STK500v1 via UART)
+// ============================================================================
+
+#define PIN_AVR_RESET       2           // GPIO 2 -> Arduino RESET pin
+#define AVR_BOOTLOADER_BAUD 57600       // Pro Mini 3.3V 8MHz uses 57600
+#define AVR_PAGE_SIZE       128         // ATmega328P page size in bytes
+#define AVR_FLASH_SIZE      30720       // 30KB usable flash (2KB bootloader)
+#define AVR_RESET_PULSE_MS  50          // RESET low duration
+#define AVR_BOOT_DELAY_MS   100         // Wait after reset for bootloader
+
 #endif // ESP32CAM_CONFIG_H
