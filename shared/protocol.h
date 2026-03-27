@@ -25,14 +25,14 @@
 #define RSP_ERROR           0x82    // Error report
 #define RSP_PONG            0x83    // Heartbeat response
 
-// Error codes
-#define ERR_NONE            0x00
-#define ERR_STALL_LEFT      0x01    // Left motor stalled
-#define ERR_STALL_RIGHT     0x02    // Right motor stalled
-#define ERR_STALL_BOTH      0x03    // Both motors stalled
-#define ERR_TIMEOUT         0x04    // Command timeout (no commands received)
-#define ERR_OVERCURRENT     0x05    // Overcurrent detected
-#define ERR_WATCHDOG        0x06    // Watchdog reset occurred
+// Error codes (prefixed to avoid conflicts with ESP-IDF/lwip)
+#define PROTO_ERR_NONE            0x00
+#define PROTO_ERR_STALL_LEFT      0x01    // Left motor stalled
+#define PROTO_ERR_STALL_RIGHT     0x02    // Right motor stalled
+#define PROTO_ERR_STALL_BOTH      0x03    // Both motors stalled
+#define PROTO_ERR_TIMEOUT         0x04    // Command timeout (no commands received)
+#define PROTO_ERR_OVERCURRENT     0x05    // Overcurrent detected
+#define PROTO_ERR_WATCHDOG        0x06    // Watchdog reset occurred
 
 // Limits
 #define MAX_RPM             130     // Max RPM for JGA25-370 130RPM variant

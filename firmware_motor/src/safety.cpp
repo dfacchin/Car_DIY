@@ -6,7 +6,7 @@
 static unsigned long last_cmd_time = 0;
 static unsigned long stall_start_a = 0;
 static unsigned long stall_start_b = 0;
-static uint8_t current_error = ERR_NONE;
+static uint8_t current_error = PROTO_ERR_NONE;
 
 void safety_init() {
     last_cmd_time = millis();
@@ -24,7 +24,7 @@ bool safety_check(uint8_t pwm_a, uint8_t pwm_b, float rpm_a, float rpm_b) {
 
     // --- Command timeout ---
     if ((now - last_cmd_time) > SAFETY_CMD_TIMEOUT_MS) {
-        current_error = ERR_TIMEOUT;
+        current_error = PROTO_ERR_TIMEOUT;
         return true;    // Stop motors
     }
 
@@ -33,7 +33,7 @@ bool safety_check(uint8_t pwm_a, uint8_t pwm_b, float rpm_a, float rpm_b) {
         if (stall_start_a == 0) {
             stall_start_a = now;
         } else if ((now - stall_start_a) > SAFETY_STALL_DURATION_MS) {
-            current_error = ERR_STALL_LEFT;
+            current_error = PROTO_ERR_STALL_LEFT;
             stall_start_a = 0;
             return true;
         }
@@ -46,7 +46,7 @@ bool safety_check(uint8_t pwm_a, uint8_t pwm_b, float rpm_a, float rpm_b) {
         if (stall_start_b == 0) {
             stall_start_b = now;
         } else if ((now - stall_start_b) > SAFETY_STALL_DURATION_MS) {
-            current_error = ERR_STALL_RIGHT;
+            current_error = PROTO_ERR_STALL_RIGHT;
             stall_start_b = 0;
             return true;
         }
@@ -62,7 +62,7 @@ uint8_t safety_get_error() {
 }
 
 void safety_clear_error() {
-    current_error = ERR_NONE;
+    current_error = PROTO_ERR_NONE;
     stall_start_a = 0;
     stall_start_b = 0;
 }
