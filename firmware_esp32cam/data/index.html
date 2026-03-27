@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Car DIY Controller</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Video Stream -->
+        <div id="video-container">
+            <img id="video-stream" alt="Camera Stream">
+            <div id="status-overlay">
+                <span id="connection-status">Connecting...</span>
+                <span id="rpm-display">L: 0 | R: 0</span>
+            </div>
+        </div>
+
+        <!-- Control Mode Tabs -->
+        <div id="control-tabs">
+            <button class="tab active" data-mode="joystick">Joystick</button>
+            <button class="tab" data-mode="tank">Tank</button>
+        </div>
+
+        <!-- Joystick Mode -->
+        <div id="joystick-mode" class="control-mode active">
+            <div id="joystick-container">
+                <div id="joystick-base">
+                    <div id="joystick-handle"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tank Mode (dual sliders) -->
+        <div id="tank-mode" class="control-mode">
+            <div class="tank-controls">
+                <div class="slider-group">
+                    <label>Left</label>
+                    <div class="vertical-slider-track" data-motor="left">
+                        <div class="vertical-slider-fill" id="left-fill"></div>
+                        <div class="vertical-slider-thumb" id="left-thumb"></div>
+                    </div>
+                    <span id="left-value">0</span>
+                </div>
+                <div class="slider-group">
+                    <label>Right</label>
+                    <div class="vertical-slider-track" data-motor="right">
+                        <div class="vertical-slider-fill" id="right-fill"></div>
+                        <div class="vertical-slider-thumb" id="right-thumb"></div>
+                    </div>
+                    <span id="right-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emergency Stop -->
+        <button id="stop-btn">STOP</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

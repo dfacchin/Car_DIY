@@ -1,0 +1,32 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+build/
+__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter
+app_controller/.dart_tool/
+app_controller/.packages
+app_controller/build/
+app_controller/.flutter-plugins
+app_controller/.flutter-plugins-dependencies
+app_controller/android/.gradle/
+app_controller/ios/Pods/
+app_controller/ios/.symlinks/
+
+# Secrets
+*.env
+credentials.*
