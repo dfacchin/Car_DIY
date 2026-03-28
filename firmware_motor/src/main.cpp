@@ -43,7 +43,49 @@ static bool raw_pwm_mode = false;
 static bool error_reported = false;
 
 // ============================================================================
-// Helper: send standard response
+// Compute RPM from encoder ticks
+// ============================================================================
+static float ticks_to_rpm(long ticks, uint16_t dt_ms) {
+    return ((float)ticks / COUNTS_PER_OUTPUT_REV) * (60000.0f / dt_ms);
+}
+
+// ============================================================================
+// Motor mapping: logical left/right -> physical motor A/B
+// ============================================================================
+static void motor_set_left(int16_t power) {
+#if MOTOR_SWAP
+    motor_set_b(power * MOTOR_LEFT_INVERT);
+#else
+    motor_set_a(power * MOTOR_LEFT_INVERT);
+#endif
+}
+
+static void motor_set_right(int16_t power) {
+#if MOTOR_SWAP
+    motor_set_a(power * MOTOR_RIGHT_INVERT);
+#else
+    motor_set_b(power * MOTOR_RIGHT_INVERT);
+#endif
+}
+
+static float get_measured_left() {
+#if MOTOR_SWAP
+    return measured_rpm_b * MOTOR_LEFT_INVERT;
+#else
+    return measured_rpm_a * MOTOR_LEFT_INVERT;
+#endif
+}
+
+static float get_measured_right() {
+#if MOTOR_SWAP
+    return measured_rpm_a * MOTOR_RIGHT_INVERT;
+#else
+    return measured_rpm_b * MOTOR_RIGHT_INVERT;
+#endif
+}
+
+// ============================================================================
+// Helper: send standard response (uses mapped RPM)
 // ============================================================================
 static void send_response(uint8_t cmd, uint8_t flags, int16_t left, int16_t right) {
     proto_response_t rsp;
@@ -51,13 +93,6 @@ static void send_response(uint8_t cmd, uint8_t flags, int16_t left, int16_t righ
                          (int16_t)measured_rpm_a, (int16_t)measured_rpm_b,
                          comm_get_rx_count());
     comm_send_response(&rsp);
-}
-
-// ============================================================================
-// Compute RPM from encoder ticks
-// ============================================================================
-static float ticks_to_rpm(long ticks, uint16_t dt_ms) {
-    return ((float)ticks / COUNTS_PER_OUTPUT_REV) * (60000.0f / dt_ms);
 }
 
 // ============================================================================
@@ -86,8 +121,8 @@ static void handle_request(const proto_request_t *req) {
             int16_t right = constrain(req->right, -255, 255);
             raw_pwm_mode = true;
             motors_enabled = false;
-            motor_set_a(left);
-            motor_set_b(right);
+            motor_set_left(left);
+            motor_set_right(right);
             current_pwm_a = abs(left);
             current_pwm_b = abs(right);
             send_response('p', req->flags, left, right);
@@ -208,13 +243,20 @@ static void pid_loop() {
     if (dt < PID_LOOP_INTERVAL_MS) return;
     last_pid_time = now;
 
-    long ticks_a = encoder_get_ticks_a();
-    long ticks_b = encoder_get_ticks_b();
+    // Read encoders (physical A/B)
+    long ticks_phys_a = encoder_get_ticks_a();
+    long ticks_phys_b = encoder_get_ticks_b();
     encoder_reset_a();
     encoder_reset_b();
 
-    measured_rpm_a = ticks_to_rpm(ticks_a, dt);
-    measured_rpm_b = ticks_to_rpm(ticks_b, dt);
+    // Map to logical left/right (with swap + encoder invert)
+#if MOTOR_SWAP
+    measured_rpm_a = ticks_to_rpm(ticks_phys_b, dt) * ENC_LEFT_INVERT;   // logical left = physical B
+    measured_rpm_b = ticks_to_rpm(ticks_phys_a, dt) * ENC_RIGHT_INVERT;  // logical right = physical A
+#else
+    measured_rpm_a = ticks_to_rpm(ticks_phys_a, dt) * ENC_LEFT_INVERT;
+    measured_rpm_b = ticks_to_rpm(ticks_phys_b, dt) * ENC_RIGHT_INVERT;
+#endif
 
     if (raw_pwm_mode) return;
 
@@ -247,25 +289,25 @@ static void pid_loop() {
     else if (diff_b < -ramp) target_rpm_b -= ramp;
     else target_rpm_b = desired_rpm_b;
 
-    // Motor A PID
+    // Left motor PID (logical A)
     if (target_rpm_a == 0 && abs((int)measured_rpm_a) < SAFETY_STALL_RPM_THRESHOLD) {
-        motor_set_a(0);
+        motor_set_left(0);
         current_pwm_a = 0;
         pid_reset(&pid_a);
     } else {
         int16_t effort = pid_compute(&pid_a, abs(target_rpm_a), abs(measured_rpm_a), dt);
-        motor_set_a((target_rpm_a >= 0) ? effort : -effort);
+        motor_set_left((target_rpm_a >= 0) ? effort : -effort);
         current_pwm_a = abs(effort);
     }
 
-    // Motor B PID
+    // Right motor PID (logical B)
     if (target_rpm_b == 0 && abs((int)measured_rpm_b) < SAFETY_STALL_RPM_THRESHOLD) {
-        motor_set_b(0);
+        motor_set_right(0);
         current_pwm_b = 0;
         pid_reset(&pid_b);
     } else {
         int16_t effort = pid_compute(&pid_b, abs(target_rpm_b), abs(measured_rpm_b), dt);
-        motor_set_b((target_rpm_b >= 0) ? effort : -effort);
+        motor_set_right((target_rpm_b >= 0) ? effort : -effort);
         current_pwm_b = abs(effort);
     }
 }

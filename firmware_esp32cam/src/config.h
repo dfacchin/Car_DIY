@@ -2,7 +2,7 @@
 #define ESP32CAM_CONFIG_H
 
 // ESP32-CAM firmware version (auto-incremented by build system)
-#define ESP32_FW_VERSION    55
+#define ESP32_FW_VERSION    63
 
 // ============================================================================
 // WiFi AP Configuration
@@ -70,7 +70,7 @@
 // ============================================================================
 
 #define PIN_AVR_RESET       13          // GPIO 13 -> Arduino RESET pin (SD DATA3, not strapping)
-#define EXPECTED_MOTOR_FW   22           // Expected motor firmware version (match FW_VERSION in motor config.h)
+#define EXPECTED_MOTOR_FW   27           // Expected motor firmware version (match FW_VERSION in motor config.h)
 #define MOTOR_FW_HEX_PATH  "/motor_fw.hex"  // LittleFS path to embedded motor firmware
 #define AVR_BOOTLOADER_BAUD 57600       // Pro Mini 3.3V 8MHz uses 57600
 #define AVR_PAGE_SIZE       128         // ATmega328P page size in bytes

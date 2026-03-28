@@ -2,21 +2,32 @@
 #define MOTOR_CONFIG_H
 
 // Firmware version (auto-incremented by build system)
-#define FW_VERSION          22
+#define FW_VERSION          27
 
 // ============================================================================
 // Pin Definitions - Arduino Pro Mini 3.3V
 // ============================================================================
 
-// Motor A (Left)
+// Motor A (physically right motor, logically LEFT in software)
 #define PIN_ENA         6       // PWM speed control
 #define PIN_IN1         7       // Direction
 #define PIN_IN2         8       // Direction
 
-// Motor B (Right)
+// Motor B (physically left motor, logically RIGHT in software)
 #define PIN_ENB         9       // PWM speed control
 #define PIN_IN3         10      // Direction
 #define PIN_IN4         11      // Direction
+
+// ============================================================================
+// Motor Mapping (swap & invert to match physical wiring)
+// Left command  -> Motor B (pins 9,10,11), direction inverted
+// Right command -> Motor A (pins 6,7,8), direction inverted
+// ============================================================================
+#define MOTOR_LEFT_INVERT   1       // -1 to invert motor direction, 1 for normal
+#define MOTOR_RIGHT_INVERT  -1      // -1 to invert motor direction, 1 for normal
+#define ENC_LEFT_INVERT     -1      // -1 to invert encoder direction, 1 for normal
+#define ENC_RIGHT_INVERT    -1      // -1 to invert encoder direction, 1 for normal
+#define MOTOR_SWAP          1       // 1 = swap left/right, 0 = normal
 
 // Encoder A (Left) - Hardware interrupts
 #define PIN_ENC_A_PHASE_A   2   // INT0
