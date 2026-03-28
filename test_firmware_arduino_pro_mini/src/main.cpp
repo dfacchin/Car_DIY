@@ -1,13 +1,21 @@
-// Blink LED on pin 13 at 5 Hz (100ms on, 100ms off)
+// Minimal echo test: any byte received is sent back immediately
 #include <Arduino.h>
 
 void setup() {
     pinMode(13, OUTPUT);
+    Serial.begin(38400);
+    digitalWrite(13, HIGH);
+    delay(200);
+    digitalWrite(13, LOW);
 }
 
 void loop() {
-    digitalWrite(13, HIGH);
-    delay(500);
-    digitalWrite(13, LOW);
-    delay(500);
+    if (Serial.available()) {
+        uint8_t b = Serial.read();
+        Serial.write(b);
+        // Blink LED on each received byte
+        digitalWrite(13, HIGH);
+        delay(10);
+        digitalWrite(13, LOW);
+    }
 }

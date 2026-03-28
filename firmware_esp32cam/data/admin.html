@@ -11,6 +11,9 @@
         <h1>Car DIY Admin</h1>
         <div id="conn-status" class="status-badge disconnected">ESP32: --</div>
         <div id="motor-status" class="status-badge disconnected">Arduino: --</div>
+        <div id="esp32-fw" class="status-badge" style="background:#21262d;color:#8b949e">ESP32 FW: --</div>
+        <div id="motor-fw-stored" class="status-badge" style="background:#21262d;color:#8b949e">Stored: --</div>
+        <div id="motor-fw-running" class="status-badge" style="background:#21262d;color:#8b949e">Running: --</div>
         <a href="/" class="back-link">Back to Control</a>
     </header>
 
@@ -76,6 +79,7 @@
             </div>
             <div class="panel-actions">
                 <button id="btn-debug-toggle" class="btn">Enable Debug Stream</button>
+                <button id="btn-ping-toggle" class="btn accent">Ping: ON</button>
                 <label class="rate-label">Poll rate:
                     <select id="poll-rate">
                         <option value="100">100ms</option>
@@ -84,6 +88,15 @@
                         <option value="1000">1s</option>
                     </select>
                 </label>
+            </div>
+        </section>
+
+        <!-- Arduino Pin States -->
+        <section class="panel wide-panel">
+            <h2>Arduino Pin States</h2>
+            <div id="pin-grid" class="pin-grid"></div>
+            <div class="panel-actions">
+                <button class="btn" onclick="refreshPins()">Refresh</button>
             </div>
         </section>
 
@@ -139,6 +152,16 @@
         <!-- Test Commands Panel -->
         <section class="panel">
             <h2>Test Commands</h2>
+
+            <!-- Safety Toggle -->
+            <div class="pid-row" style="margin-bottom:10px">
+                <label style="width:80px;color:#f85149;font-weight:700">Safety</label>
+                <button id="btn-safety" class="btn sm accent" onclick="toggleSafety()">Enabled</button>
+                <span id="safety-status" style="font-size:11px;color:#3fb950">Watchdog + stall + timeout active</span>
+            </div>
+
+            <!-- RPM Mode (via PID) -->
+            <h3>RPM Mode (PID)</h3>
             <div class="test-grid">
                 <div class="test-row">
                     <label>Left RPM</label>
@@ -156,6 +179,27 @@
                 <button id="btn-test-stop" class="btn danger" onclick="sendStop()">STOP</button>
                 <button class="btn" onclick="resetSliders()">Reset to 0</button>
             </div>
+
+            <!-- Raw PWM Mode (bypass PID) -->
+            <h3>Raw PWM (bypass PID)</h3>
+            <div class="test-grid">
+                <div class="test-row">
+                    <label>Left PWM</label>
+                    <input type="range" id="raw-left" min="-255" max="255" value="0">
+                    <span id="raw-left-val" class="mono">0</span>
+                </div>
+                <div class="test-row">
+                    <label>Right PWM</label>
+                    <input type="range" id="raw-right" min="-255" max="255" value="0">
+                    <span id="raw-right-val" class="mono">0</span>
+                </div>
+            </div>
+            <div class="panel-actions">
+                <button class="btn accent" onclick="sendRawPwm()">Send PWM</button>
+                <button class="btn danger" onclick="sendStop()">STOP</button>
+                <button class="btn" onclick="resetRawSliders()">Reset to 0</button>
+            </div>
+
             <h3>Quick Tests</h3>
             <div class="quick-tests">
                 <button class="btn sm" onclick="quickTest(50,50)">Fwd 50</button>
@@ -196,6 +240,20 @@
                 <input type="file" id="avr-file" accept=".hex">
                 <button class="btn accent" id="avr-upload-btn">Upload Arduino</button>
                 <div class="fw-progress" id="avr-progress"></div>
+            </div>
+        </section>
+
+        <!-- Serial Bridge Panel -->
+        <section class="panel">
+            <h2>Serial Bridge (avrdude)</h2>
+            <p style="font-size:12px;color:#8b949e;margin-bottom:8px">
+                Passthrough USB ↔ Arduino UART. Flash Arduino with avrdude via ESP32's USB port.<br>
+                <code style="color:#4cc9f0">avrdude -c arduino -p m328p -P COMxx -b 57600 -U flash:w:file.hex</code>
+            </p>
+            <div class="panel-actions">
+                <button id="btn-bridge-start" class="btn accent" onclick="startBridge()">Start Bridge</button>
+                <button id="btn-bridge-stop" class="btn danger" onclick="stopBridge()">Stop Bridge</button>
+                <span id="bridge-status" style="font-size:12px;color:#8b949e">Inactive</span>
             </div>
         </section>
 

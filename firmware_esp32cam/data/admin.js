@@ -88,8 +88,6 @@ async function pollStatus() {
         if (data.pong_age !== undefined && data.pong_age > 0) {
             setText('s-pong-age', `${data.pong_age}ms ago`);
         }
-        setText('s-tx-count', data.tx_count);
-        setText('s-rx-count', data.rx_count);
 
         pushChart(data.left_rpm, data.right_rpm, data.target_left, data.target_right);
     } else {
@@ -97,6 +95,32 @@ async function pollStatus() {
         setText('s-target-r', data.target_right);
 
         pushChart(data.left_rpm, data.right_rpm, data.target_left, data.target_right);
+    }
+
+    // Always show TX/RX counters
+    setText('s-tx-count', data.tx_count);
+    setText('s-rx-count', data.rx_count);
+
+    // Firmware versions (always, regardless of debug mode)
+    if (data.esp32_fw !== undefined) {
+        document.getElementById('esp32-fw').textContent = `ESP32 FW: v${data.esp32_fw}`;
+        document.getElementById('esp32-fw').style.color = '#4cc9f0';
+    }
+    if (data.expected_fw !== undefined) {
+        document.getElementById('motor-fw-stored').textContent = `Stored: v${data.expected_fw}`;
+    }
+    if (data.fw_version !== undefined) {
+        const el = document.getElementById('motor-fw-running');
+        const running = data.fw_version;
+        const stored = data.expected_fw || 0;
+        el.textContent = running > 0 ? `Running: v${running}` : 'Running: --';
+        if (running > 0 && running === stored) {
+            el.style.background = '#0d421b';
+            el.style.color = '#3fb950';
+        } else if (running > 0) {
+            el.style.background = '#3d1216';
+            el.style.color = '#f85149';
+        }
     }
 
     // Error display
@@ -171,6 +195,23 @@ document.getElementById('btn-debug-toggle').addEventListener('click', async () =
         document.getElementById('btn-debug-toggle').textContent =
             debugEnabled ? 'Disable Debug Stream' : 'Enable Debug Stream';
         log(`Debug stream ${debugEnabled ? 'enabled' : 'disabled'}`, 'success');
+    }
+});
+
+// Ping toggle
+document.getElementById('btn-ping-toggle').addEventListener('click', async () => {
+    const res = await api('/api/debug/ping');
+    if (res && res.ok) {
+        const btn = document.getElementById('btn-ping-toggle');
+        if (res.ping) {
+            btn.textContent = 'Ping: ON';
+            btn.className = 'btn accent';
+            log('Ping enabled', 'success');
+        } else {
+            btn.textContent = 'Ping: OFF';
+            btn.className = 'btn danger';
+            log('Ping disabled', 'warn');
+        }
     }
 });
 
@@ -262,6 +303,57 @@ function resetSliders() {
     testRight.value = 0;
     document.getElementById('test-left-val').textContent = '0';
     document.getElementById('test-right-val').textContent = '0';
+}
+
+// Raw PWM sliders
+const rawLeft = document.getElementById('raw-left');
+const rawRight = document.getElementById('raw-right');
+
+rawLeft.addEventListener('input', () => {
+    document.getElementById('raw-left-val').textContent = rawLeft.value;
+});
+rawRight.addEventListener('input', () => {
+    document.getElementById('raw-right-val').textContent = rawRight.value;
+});
+
+async function sendRawPwm() {
+    const l = parseInt(rawLeft.value);
+    const r = parseInt(rawRight.value);
+    const res = await api(`/api/debug/raw_pwm?left=${l}&right=${r}`, { method: 'POST' });
+    if (res && res.ok) {
+        log(`Raw PWM sent: L=${l} R=${r}`, 'data');
+    }
+}
+
+function resetRawSliders() {
+    rawLeft.value = 0;
+    rawRight.value = 0;
+    document.getElementById('raw-left-val').textContent = '0';
+    document.getElementById('raw-right-val').textContent = '0';
+}
+
+// Safety toggle
+let safetyEnabled = true;
+
+async function toggleSafety() {
+    safetyEnabled = !safetyEnabled;
+    const res = await api(`/api/debug/safety?enabled=${safetyEnabled ? '1' : '0'}`, { method: 'POST' });
+    if (res && res.ok) {
+        const btn = document.getElementById('btn-safety');
+        const status = document.getElementById('safety-status');
+        if (safetyEnabled) {
+            btn.textContent = 'Enabled';
+            btn.className = 'btn sm accent';
+            status.textContent = 'Watchdog + stall + timeout active';
+            status.style.color = '#3fb950';
+        } else {
+            btn.textContent = 'DISABLED';
+            btn.className = 'btn sm danger';
+            status.textContent = 'ALL SAFETY OFF — be careful!';
+            status.style.color = '#f85149';
+        }
+        log(`Safety ${safetyEnabled ? 'enabled' : 'DISABLED'}`, safetyEnabled ? 'success' : 'error');
+    }
 }
 
 async function quickTest(l, r) {
@@ -356,6 +448,66 @@ function drawChart() {
     drawLine(chartData.targetR, 'rgba(247,37,133,0.35)', true);
     drawLine(chartData.leftRpm, '#4cc9f0', false);
     drawLine(chartData.rightRpm, '#f72585', false);
+}
+
+// ============================================================================
+// Arduino Pin States
+// ============================================================================
+
+const PIN_LABELS = {
+    0: 'RX', 1: 'TX', 2: 'ENC-A1', 3: 'ENC-A2',
+    4: 'ENC-B1', 5: 'ENC-B2', 6: 'ENA', 7: 'IN1',
+    8: 'IN2', 9: 'ENB', 10: 'IN3', 11: 'IN4',
+    12: '', 13: 'LED'
+};
+
+async function refreshPins() {
+    const data = await api('/api/debug/pins');
+    if (!data || !data.pins) return;
+
+    const grid = document.getElementById('pin-grid');
+    grid.innerHTML = '';
+
+    data.pins.forEach(pin => {
+        const div = document.createElement('div');
+        const modeClass = pin.m === 'PWM' ? 'mode-pwm' : pin.m === 'OUT' ? 'mode-out' : 'mode-in';
+        const valClass = pin.v ? 'val-high' : 'val-low';
+        div.className = `pin-box ${modeClass} ${valClass}`;
+
+        let valText = pin.v ? 'HIGH' : 'LOW';
+        let valColor = pin.v ? '#3fb950' : '#d29922';
+        if (pin.pwm >= 0) { valText = `${pin.pwm}`; valColor = '#d29922'; }
+
+        div.innerHTML = `<div class="pin-num">D${pin.p}</div>`
+            + `<div class="pin-mode ${modeClass}">${pin.m}</div>`
+            + `<div class="pin-val" style="color:${valColor}">${valText}</div>`
+            + `<div class="pin-label">${PIN_LABELS[pin.p] || ''}</div>`;
+        grid.appendChild(div);
+    });
+
+    log(`Pins refreshed: ${data.pins.length} pins`, 'data');
+}
+
+// ============================================================================
+// Serial Bridge (avrdude passthrough)
+// ============================================================================
+
+async function startBridge() {
+    const res = await api('/api/bridge/start');
+    if (res && res.ok) {
+        document.getElementById('bridge-status').textContent = 'ACTIVE (60s timeout)';
+        document.getElementById('bridge-status').style.color = '#3fb950';
+        log('Serial bridge started — run avrdude now!', 'success');
+    }
+}
+
+async function stopBridge() {
+    const res = await api('/api/bridge/stop');
+    if (res && res.ok) {
+        document.getElementById('bridge-status').textContent = 'Inactive';
+        document.getElementById('bridge-status').style.color = '#8b949e';
+        log('Serial bridge stopped', 'info');
+    }
 }
 
 // ============================================================================

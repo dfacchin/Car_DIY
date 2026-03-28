@@ -9,128 +9,188 @@
 #include <LittleFS.h>
 
 static DNSServer dns_server;
-
 static WebServer server(WEB_SERVER_PORT);
 
-// Current command state
-static int16_t cmd_left_rpm = 0;
-static int16_t cmd_right_rpm = 0;
-static unsigned long last_cmd_time = 0;
+// Defined in main.cpp
+extern volatile uint8_t cmd_mode;
+extern volatile int16_t cmd_left;
+extern volatile int16_t cmd_right;
+extern volatile uint8_t cmd_flags;
+extern volatile bool ping_enabled;
+extern volatile bool bridge_mode;
+extern void bridge_start();
+extern void bridge_stop();
 
 // ============================================================================
-// API Endpoints - Control
+// Control API
 // ============================================================================
 
 static void handle_control() {
     if (server.hasArg("left") && server.hasArg("right")) {
-        cmd_left_rpm = constrain(server.arg("left").toInt(), -MAX_RPM, MAX_RPM);
-        cmd_right_rpm = constrain(server.arg("right").toInt(), -MAX_RPM, MAX_RPM);
-        last_cmd_time = millis();
-        motor_comm_set_rpm(cmd_left_rpm, cmd_right_rpm);
+        cmd_left = constrain(server.arg("left").toInt(), -MAX_RPM, MAX_RPM);
+        cmd_right = constrain(server.arg("right").toInt(), -MAX_RPM, MAX_RPM);
+        cmd_mode = CMD_RPM;
         server.send(200, "application/json", "{\"ok\":true}");
     } else {
-        server.send(400, "application/json", "{\"error\":\"missing left/right params\"}");
+        server.send(400, "application/json", "{\"error\":\"missing left/right\"}");
     }
 }
 
 static void handle_stop() {
-    cmd_left_rpm = 0;
-    cmd_right_rpm = 0;
-    motor_comm_stop();
+    cmd_left = 0;
+    cmd_right = 0;
+    cmd_mode = CMD_RPM;
+    motor_comm_send(CMD_STOP, 0, 0, 0);
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handle_brake() {
-    cmd_left_rpm = 0;
-    cmd_right_rpm = 0;
-    motor_comm_brake();
+    cmd_left = 0;
+    cmd_right = 0;
+    motor_comm_send(CMD_BRAKE, 0, 0, 0);
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handle_status() {
-    int16_t left_rpm, right_rpm;
-    motor_comm_get_status(&left_rpm, &right_rpm);
-    uint8_t error = motor_comm_get_error();
+    const proto_response_t *rsp = motor_comm_last_response();
     bool connected = motor_comm_is_connected();
 
-    char json[192];
-    snprintf(json, sizeof(json),
-        "{\"left_rpm\":%d,\"right_rpm\":%d,\"target_left\":%d,\"target_right\":%d,"
-        "\"error\":%d,\"motor_connected\":%s}",
-        left_rpm, right_rpm, cmd_left_rpm, cmd_right_rpm, error,
-        connected ? "true" : "false");
-
-    server.send(200, "application/json", json);
-}
-
-// ============================================================================
-// API Endpoints - Admin / Debug
-// ============================================================================
-
-static void handle_debug_status() {
-    // GET /api/debug/status - extended status with debug data
-    int16_t left_rpm, right_rpm;
-    motor_comm_get_status(&left_rpm, &right_rpm);
-    uint8_t error = motor_comm_get_error();
-
-    int8_t pwm_a, pwm_b, target_a, target_b;
-    motor_comm_get_debug(&pwm_a, &pwm_b, &target_a, &target_b);
-
-    int16_t enc_a, enc_b;
-    motor_comm_get_encoders(&enc_a, &enc_b);
-
-    bool connected = motor_comm_is_connected();
-    unsigned long pong_age = motor_comm_last_pong_age();
-    uint32_t tx_cnt = motor_comm_get_tx_count();
-    uint32_t rx_cnt = motor_comm_get_rx_count();
-
-    char json[448];
+    char json[320];
     snprintf(json, sizeof(json),
         "{\"left_rpm\":%d,\"right_rpm\":%d,"
-        "\"target_left\":%d,\"target_right\":%d,"
-        "\"cmd_left\":%d,\"cmd_right\":%d,"
-        "\"pwm_a\":%d,\"pwm_b\":%d,"
-        "\"enc_a\":%d,\"enc_b\":%d,"
-        "\"error\":%d,\"uptime\":%lu,"
-        "\"motor_connected\":%s,\"pong_age\":%lu,"
-        "\"tx_count\":%lu,\"rx_count\":%lu}",
-        left_rpm, right_rpm,
-        (int)target_a, (int)target_b,
-        cmd_left_rpm, cmd_right_rpm,
-        (int)pwm_a * 2, (int)pwm_b * 2,
-        enc_a, enc_b,
-        error, millis() / 1000,
-        connected ? "true" : "false", pong_age,
-        tx_cnt, rx_cnt);
+        "\"cmd_left\":%d,\"cmd_right\":%d,\"cmd_mode\":\"%c\","
+        "\"error\":0,\"motor_connected\":%s,"
+        "\"esp32_fw\":%u,\"fw_version\":%u,\"expected_fw\":%u,"
+        "\"tx_count\":%lu,\"rx_count\":%lu,\"arduino_rx\":%u,"
+        "\"uptime\":%lu}",
+        rsp ? rsp->actual_left : 0, rsp ? rsp->actual_right : 0,
+        (int)cmd_left, (int)cmd_right, (char)cmd_mode,
+        connected ? "true" : "false",
+        ESP32_FW_VERSION, motor_comm_get_fw_version(), EXPECTED_MOTOR_FW,
+        motor_comm_get_tx_count(), motor_comm_get_rx_count(),
+        rsp ? rsp->rx_count : 0,
+        millis() / 1000);
 
     server.send(200, "application/json", json);
 }
 
-static void handle_pid_get() {
-    // GET /api/pid - request PID params from motor controller
-    motor_comm_get_pid();
+// ============================================================================
+// Debug API
+// ============================================================================
 
-    // Wait briefly for response (motor controller should reply quickly)
-    unsigned long start = millis();
-    proto_packet_t rx_pkt;
-    while ((millis() - start) < 200) {
-        motor_comm_receive(&rx_pkt);
-        delay(1);
+static void handle_raw_pwm() {
+    if (server.hasArg("left") && server.hasArg("right")) {
+        cmd_left = constrain(server.arg("left").toInt(), -255, 255);
+        cmd_right = constrain(server.arg("right").toInt(), -255, 255);
+        cmd_mode = CMD_PWM;
+        server.send(200, "application/json", "{\"ok\":true}");
+    } else {
+        server.send(400, "application/json", "{\"error\":\"missing left/right\"}");
+    }
+}
+
+static void handle_safety() {
+    if (server.hasArg("enabled")) {
+        uint8_t en = (server.arg("enabled") == "1" || server.arg("enabled") == "true") ? 1 : 0;
+        motor_comm_send(CMD_SAFETY, en, 0, 0);
+        char json[48];
+        snprintf(json, sizeof(json), "{\"ok\":true,\"safety\":%s}", en ? "true" : "false");
+        server.send(200, "application/json", json);
+    } else {
+        server.send(400, "application/json", "{\"error\":\"missing enabled\"}");
+    }
+}
+
+static void handle_pins() {
+    motor_comm_send(CMD_PINS, 0, 0, 0);
+    const proto_response_t *rsp = motor_comm_last_response();
+    if (!rsp || rsp->cmd != 'n') {
+        server.send(500, "application/json", "{\"error\":\"no response\"}");
+        return;
     }
 
-    const motor_pid_cache_t *pid = motor_comm_get_pid_cache();
-    char json[192];
-    snprintf(json, sizeof(json),
-        "{\"kp\":%.2f,\"ki\":%.2f,\"kd\":%.2f,\"imax\":%d,\"ramp\":%d,\"valid\":%s}",
-        pid->kp / 100.0f, pid->ki / 100.0f, pid->kd / 100.0f,
-        pid->imax, pid->ramp,
-        pid->valid ? "true" : "false");
+    uint16_t dirs = (uint16_t)rsp->left;
+    uint16_t vals = (uint16_t)rsp->right;
 
+    char json[512];
+    int pos = 0;
+    pos += snprintf(json + pos, sizeof(json) - pos, "{\"pins\":[");
+    for (int i = 0; i <= 13; i++) {
+        bool is_out = (dirs >> i) & 1;
+        bool val = (vals >> i) & 1;
+        const char *mode = is_out ? "OUT" : "IN";
+        int pwm_val = -1;
+        if (is_out && (i == 6 || i == 9)) {
+            mode = "PWM";
+            // Get PWM values via debug command
+        }
+        pos += snprintf(json + pos, sizeof(json) - pos,
+            "%s{\"p\":%d,\"m\":\"%s\",\"v\":%d,\"pwm\":%d}",
+            i > 0 ? "," : "", i, mode, val ? 1 : 0, pwm_val);
+    }
+    pos += snprintf(json + pos, sizeof(json) - pos, "]}");
+    server.send(200, "application/json", json);
+}
+
+static void handle_ping_toggle() {
+    if (server.hasArg("enabled")) {
+        ping_enabled = server.arg("enabled") == "1" || server.arg("enabled") == "true";
+    } else {
+        ping_enabled = !ping_enabled;
+    }
+    char json[48];
+    snprintf(json, sizeof(json), "{\"ok\":true,\"ping\":%s}", ping_enabled ? "true" : "false");
+    server.send(200, "application/json", json);
+}
+
+static void handle_debug_cmd() {
+    motor_comm_send(CMD_DEBUG, 0, 0, 0);
+    const proto_response_t *rsp = motor_comm_last_response();
+    if (rsp && rsp->cmd == 'd') {
+        char json[64];
+        snprintf(json, sizeof(json), "{\"pwm_a\":%d,\"pwm_b\":%d}", (int)rsp->left, (int)rsp->right);
+        server.send(200, "application/json", json);
+    } else {
+        server.send(500, "application/json", "{\"error\":\"no response\"}");
+    }
+}
+
+// ============================================================================
+// PID API
+// ============================================================================
+
+static void handle_pid_get() {
+    // Get all params one by one
+    int16_t kp = 0, ki = 0, kd = 0, imax = 0, ramp = 0;
+
+    motor_comm_send(CMD_GET_PID, PID_PARAM_KP, 0, 0);
+    const proto_response_t *r = motor_comm_last_response();
+    if (r && r->cmd == 'g') kp = r->left;
+
+    motor_comm_send(CMD_GET_PID, PID_PARAM_KI, 0, 0);
+    r = motor_comm_last_response();
+    if (r && r->cmd == 'g') ki = r->left;
+
+    motor_comm_send(CMD_GET_PID, PID_PARAM_KD, 0, 0);
+    r = motor_comm_last_response();
+    if (r && r->cmd == 'g') kd = r->left;
+
+    motor_comm_send(CMD_GET_PID, PID_PARAM_IMAX, 0, 0);
+    r = motor_comm_last_response();
+    if (r && r->cmd == 'g') imax = r->left;
+
+    motor_comm_send(CMD_GET_PID, PID_PARAM_RAMP, 0, 0);
+    r = motor_comm_last_response();
+    if (r && r->cmd == 'g') ramp = r->left;
+
+    char json[128];
+    snprintf(json, sizeof(json),
+        "{\"kp\":%.2f,\"ki\":%.2f,\"kd\":%.2f,\"imax\":%d,\"ramp\":%d,\"valid\":true}",
+        kp / 100.0f, ki / 100.0f, kd / 100.0f, imax, ramp);
     server.send(200, "application/json", json);
 }
 
 static void handle_pid_set() {
-    // POST /api/pid/set?param=<id>&value=<val>
     if (!server.hasArg("param") || !server.hasArg("value")) {
         server.send(400, "application/json", "{\"error\":\"missing param/value\"}");
         return;
@@ -138,47 +198,47 @@ static void handle_pid_set() {
 
     String param = server.arg("param");
     float fval = server.arg("value").toFloat();
+    uint8_t pid = 0;
+    int16_t wire = 0;
 
-    uint8_t param_id = 0;
-    int16_t wire_value = 0;
+    if (param == "kp")        { pid = PID_PARAM_KP;   wire = (int16_t)(fval * 100); }
+    else if (param == "ki")   { pid = PID_PARAM_KI;   wire = (int16_t)(fval * 100); }
+    else if (param == "kd")   { pid = PID_PARAM_KD;   wire = (int16_t)(fval * 100); }
+    else if (param == "imax") { pid = PID_PARAM_IMAX; wire = (int16_t)fval; }
+    else if (param == "ramp") { pid = PID_PARAM_RAMP; wire = (int16_t)fval; }
+    else { server.send(400, "application/json", "{\"error\":\"unknown param\"}"); return; }
 
-    if (param == "kp")        { param_id = PID_PARAM_KP;   wire_value = (int16_t)(fval * 100); }
-    else if (param == "ki")   { param_id = PID_PARAM_KI;   wire_value = (int16_t)(fval * 100); }
-    else if (param == "kd")   { param_id = PID_PARAM_KD;   wire_value = (int16_t)(fval * 100); }
-    else if (param == "imax") { param_id = PID_PARAM_IMAX; wire_value = (int16_t)fval; }
-    else if (param == "ramp") { param_id = PID_PARAM_RAMP; wire_value = (int16_t)fval; }
-    else {
-        server.send(400, "application/json", "{\"error\":\"unknown param\"}");
-        return;
-    }
-
-    motor_comm_set_pid(param_id, wire_value);
-
-    char json[64];
-    snprintf(json, sizeof(json), "{\"ok\":true,\"param\":\"%s\",\"value\":%.2f}", param.c_str(), fval);
-    server.send(200, "application/json", json);
+    motor_comm_send(CMD_SET_PID, pid, wire, 0);
+    server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handle_pid_save() {
-    // POST /api/pid/save - save to EEPROM
-    motor_comm_save_pid();
-    server.send(200, "application/json", "{\"ok\":true,\"msg\":\"PID saved to EEPROM\"}");
-}
-
-static void handle_debug_toggle() {
-    // POST /api/debug/toggle - toggle debug mode on motor controller
-    motor_comm_toggle_debug();
+    motor_comm_send(CMD_SAVE_PID, 0, 0, 0);
     server.send(200, "application/json", "{\"ok\":true}");
 }
+
+// ============================================================================
+// Bridge
+// ============================================================================
+
+static void handle_bridge_start() {
+    bridge_start();
+    server.send(200, "application/json", "{\"ok\":true,\"msg\":\"Bridge active 60s\"}");
+}
+
+static void handle_bridge_stop() {
+    bridge_stop();
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// ============================================================================
+// Captive portal + static files
+// ============================================================================
 
 static void redirect_to_root() {
     server.sendHeader("Location", "http://192.168.4.1/", true);
     server.send(302, "text/plain", "");
 }
-
-// ============================================================================
-// Static file serving from LittleFS
-// ============================================================================
 
 static String get_content_type(const String &path) {
     if (path.endsWith(".html")) return "text/html";
@@ -191,28 +251,25 @@ static String get_content_type(const String &path) {
 }
 
 static bool serve_file(const String &path) {
-    String file_path = path;
-    if (file_path.endsWith("/")) file_path += "index.html";
-
-    if (LittleFS.exists(file_path)) {
-        File file = LittleFS.open(file_path, "r");
-        server.streamFile(file, get_content_type(file_path));
-        file.close();
+    String fp = path;
+    if (fp.endsWith("/")) fp += "index.html";
+    if (LittleFS.exists(fp)) {
+        File f = LittleFS.open(fp, "r");
+        server.streamFile(f, get_content_type(fp));
+        f.close();
         return true;
     }
     return false;
 }
 
 // ============================================================================
-// Public API
+// Init
 // ============================================================================
 
 void web_server_init() {
-    if (!LittleFS.begin(true)) {
-        Serial.println("LittleFS mount failed");
-    }
+    if (!LittleFS.begin(true)) Serial.println("LittleFS mount failed");
 
-    // Control API
+    // Control
     server.on("/api/control", HTTP_POST, handle_control);
     server.on("/api/control", HTTP_GET, handle_control);
     server.on("/api/stop", HTTP_POST, handle_stop);
@@ -221,60 +278,57 @@ void web_server_init() {
     server.on("/api/brake", HTTP_GET, handle_brake);
     server.on("/api/status", HTTP_GET, handle_status);
 
-    // Admin/Debug API
-    server.on("/api/debug/status", HTTP_GET, handle_debug_status);
-    server.on("/api/debug/toggle", HTTP_POST, handle_debug_toggle);
-    server.on("/api/debug/toggle", HTTP_GET, handle_debug_toggle);
-    server.on("/api/pid", HTTP_GET, handle_pid_get);
-    server.on("/api/pid/set", HTTP_POST, handle_pid_set);
-    server.on("/api/pid/set", HTTP_GET, handle_pid_set);
-    server.on("/api/pid/save", HTTP_POST, handle_pid_save);
-    server.on("/api/pid/save", HTTP_GET, handle_pid_save);
+    // Debug
+    server.on("/api/debug/raw_pwm", HTTP_GET, handle_raw_pwm);
+    server.on("/api/debug/raw_pwm", HTTP_POST, handle_raw_pwm);
+    server.on("/api/debug/safety", HTTP_GET, handle_safety);
+    server.on("/api/debug/safety", HTTP_POST, handle_safety);
+    server.on("/api/debug/pins", HTTP_GET, handle_pins);
+    server.on("/api/debug/ping", HTTP_GET, handle_ping_toggle);
+    server.on("/api/debug/ping", HTTP_POST, handle_ping_toggle);
+    server.on("/api/debug/cmd", HTTP_GET, handle_debug_cmd);
 
-    // OTA and AVR flash endpoints
+    // PID
+    server.on("/api/pid", HTTP_GET, handle_pid_get);
+    server.on("/api/pid/set", HTTP_GET, handle_pid_set);
+    server.on("/api/pid/set", HTTP_POST, handle_pid_set);
+    server.on("/api/pid/save", HTTP_GET, handle_pid_save);
+    server.on("/api/pid/save", HTTP_POST, handle_pid_save);
+
+    // Bridge
+    server.on("/api/bridge/start", HTTP_GET, handle_bridge_start);
+    server.on("/api/bridge/stop", HTTP_GET, handle_bridge_stop);
+
+    // OTA
     ota_init(&server);
     avr_flash_register(&server);
 
-    // Shortcut: /admin -> /admin.html
+    // Shortcuts
     server.on("/admin", HTTP_GET, []() {
         server.sendHeader("Location", "/admin.html", true);
         server.send(302, "text/plain", "");
     });
 
-    // Captive portal detection: return expected responses so OS marks
-    // network as "connected, no internet" instead of trapping in portal popup.
-    // Then the user can open the regular browser normally.
-    server.on("/generate_204", HTTP_GET, []() { server.send(204); });  // Android
-    server.on("/gen_204", HTTP_GET, []() { server.send(204); });       // Android
-    server.on("/hotspot-detect.html", HTTP_GET, []() {                 // iOS
+    // Captive portal
+    server.on("/generate_204", HTTP_GET, []() { server.send(204); });
+    server.on("/gen_204", HTTP_GET, []() { server.send(204); });
+    server.on("/hotspot-detect.html", HTTP_GET, []() {
         server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
     });
-    server.on("/library/test/success.html", HTTP_GET, []() {          // iOS
+    server.on("/library/test/success.html", HTTP_GET, []() {
         server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
     });
-    server.on("/ncsi.txt", HTTP_GET, []() {                            // Windows
-        server.send(200, "text/plain", "Microsoft NCSI");
-    });
-    server.on("/connecttest.txt", HTTP_GET, []() {                     // Windows
-        server.send(200, "text/plain", "Microsoft Connect Test");
-    });
-    server.on("/fwlink", HTTP_GET, redirect_to_root);                  // Windows fallback
+    server.on("/ncsi.txt", HTTP_GET, []() { server.send(200, "text/plain", "Microsoft NCSI"); });
+    server.on("/connecttest.txt", HTTP_GET, []() { server.send(200, "text/plain", "Microsoft Connect Test"); });
+    server.on("/fwlink", HTTP_GET, redirect_to_root);
 
-    // Serve static files, redirect everything else to root
     server.onNotFound([]() {
-        String uri = server.uri();
-        // Serve known static files (css, js, html, images)
-        if (serve_file(uri)) return;
-        // Everything else -> redirect to main page
-        redirect_to_root();
+        if (!serve_file(server.uri())) redirect_to_root();
     });
 
     server.enableCORS(true);
     server.begin();
-
-    // DNS server: resolve ALL domains to 192.168.4.1 (captive portal)
     dns_server.start(53, "*", IPAddress(192, 168, 4, 1));
-
     Serial.printf("Web server started on port %d\n", WEB_SERVER_PORT);
     Serial.println("DNS captive portal active");
 }
@@ -282,13 +336,4 @@ void web_server_init() {
 void web_server_handle() {
     dns_server.processNextRequest();
     server.handleClient();
-
-    // Resend last command periodically to keep motor controller alive
-    if (last_cmd_time > 0 && (cmd_left_rpm != 0 || cmd_right_rpm != 0)) {
-        unsigned long now = millis();
-        if ((now - last_cmd_time) > MOTOR_CMD_RATE_MS) {
-            motor_comm_set_rpm(cmd_left_rpm, cmd_right_rpm);
-            last_cmd_time = now;
-        }
-    }
 }

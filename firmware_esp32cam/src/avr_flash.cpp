@@ -1,6 +1,7 @@
 #include "avr_flash.h"
 #include "config.h"
 #include "protocol.h"
+#include <LittleFS.h>
 
 static WebServer *_server = nullptr;
 
@@ -54,6 +55,7 @@ static bool parse_hex_line(const char *line, hex_record_t *rec) {
 #define STK_GET_SYNC    0x30
 #define STK_LOAD_ADDR   0x55
 #define STK_PROG_PAGE   0x64
+#define STK_READ_PAGE   0x74
 #define STK_LEAVE_PROG  0x51
 
 static bool stk_wait_response(uint8_t expected1, uint8_t expected2, uint16_t timeout_ms = 500) {
@@ -107,6 +109,43 @@ static bool stk_prog_page(const uint8_t *data, uint16_t len) {
     Serial2.write(CRC_EOP);
     Serial2.flush();
     return stk_wait_response(STK_INSYNC, STK_OK, 1000);
+}
+
+static bool stk_read_page(uint8_t *buf, uint16_t len) {
+    Serial2.write(STK_READ_PAGE);
+    Serial2.write((uint8_t)(len >> 8));
+    Serial2.write((uint8_t)(len & 0xFF));
+    Serial2.write('F');  // Flash memory type
+    Serial2.write(CRC_EOP);
+    Serial2.flush();
+
+    // Expect: STK_INSYNC, then len data bytes, then STK_OK
+    unsigned long start = millis();
+    // Wait for INSYNC
+    while ((millis() - start) < 1000) {
+        if (Serial2.available()) {
+            if (Serial2.read() == STK_INSYNC) break;
+            else return false;
+        }
+    }
+    if ((millis() - start) >= 1000) return false;
+
+    // Read data bytes
+    uint16_t received = 0;
+    while (received < len && (millis() - start) < 2000) {
+        if (Serial2.available()) {
+            buf[received++] = Serial2.read();
+        }
+    }
+    if (received < len) return false;
+
+    // Wait for STK_OK
+    while ((millis() - start) < 2000) {
+        if (Serial2.available()) {
+            return Serial2.read() == STK_OK;
+        }
+    }
+    return false;
 }
 
 static bool stk_leave_progmode() {
@@ -285,4 +324,161 @@ void avr_flash_init() {
 void avr_flash_register(WebServer *server) {
     _server = server;
     server->on("/api/ota/avr", HTTP_POST, handle_avr_result, handle_avr_upload);
+}
+
+bool avr_flash_from_file(const char *path) {
+    File f = LittleFS.open(path, "r");
+    if (!f) {
+        flash_error = "File not found: " + String(path);
+        Serial.printf("[AVR-AUTO] %s\n", flash_error.c_str());
+        return false;
+    }
+
+    // Reset state
+    flash_size = 0;
+    flash_ok = false;
+    flash_error = "";
+    memset(flash_buf, 0xFF, sizeof(flash_buf));
+
+    Serial.printf("[AVR-AUTO] Reading %s (%u bytes)\n", path, f.size());
+
+    // Parse hex line by line
+    while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (line.length() < 11) continue;
+
+        hex_record_t rec;
+        if (!parse_hex_line(line.c_str(), &rec)) {
+            flash_error = "Bad HEX line";
+            f.close();
+            return false;
+        }
+
+        if (rec.type == 0x01) break;  // EOF
+        if (rec.type != 0x00) continue;
+
+        for (uint8_t i = 0; i < rec.byte_count; i++) {
+            uint32_t addr = rec.address + i;
+            if (addr >= AVR_FLASH_SIZE) {
+                flash_error = "HEX exceeds flash size";
+                f.close();
+                return false;
+            }
+            flash_buf[addr] = rec.data[i];
+            if (addr + 1 > flash_size) flash_size = addr + 1;
+        }
+    }
+    f.close();
+
+    if (flash_size == 0) {
+        flash_error = "Empty HEX file";
+        return false;
+    }
+
+    Serial.printf("[AVR-AUTO] Parsed %u bytes, flashing...\n", flash_size);
+    flash_ok = do_flash();
+    return flash_ok;
+}
+
+const String &avr_flash_last_error() {
+    return flash_error;
+}
+
+bool avr_verify_from_file(const char *path) {
+    // Parse hex file into flash_buf
+    File f = LittleFS.open(path, "r");
+    if (!f) {
+        flash_error = "File not found: " + String(path);
+        return false;
+    }
+
+    flash_size = 0;
+    flash_error = "";
+    memset(flash_buf, 0xFF, sizeof(flash_buf));
+
+    while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (line.length() < 11) continue;
+
+        hex_record_t rec;
+        if (!parse_hex_line(line.c_str(), &rec)) { f.close(); flash_error = "Bad HEX"; return false; }
+        if (rec.type == 0x01) break;
+        if (rec.type != 0x00) continue;
+
+        for (uint8_t i = 0; i < rec.byte_count; i++) {
+            uint32_t addr = rec.address + i;
+            if (addr >= AVR_FLASH_SIZE) { f.close(); flash_error = "HEX too large"; return false; }
+            flash_buf[addr] = rec.data[i];
+            if (addr + 1 > flash_size) flash_size = addr + 1;
+        }
+    }
+    f.close();
+
+    if (flash_size == 0) { flash_error = "Empty HEX"; return false; }
+
+    // Enter bootloader
+    Serial2.end();
+    Serial2.begin(AVR_BOOTLOADER_BAUD, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
+    delay(50);
+
+    reset_avr();
+
+    if (!stk_get_sync()) {
+        flash_error = "No sync for verify";
+        Serial2.end();
+        Serial2.begin(PROTO_BAUD_RATE, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
+        return false;
+    }
+
+    // Read and compare page by page
+    bool match = true;
+    uint32_t offset = 0;
+    uint8_t read_buf[AVR_PAGE_SIZE];
+
+    while (offset < flash_size) {
+        uint16_t page_len = AVR_PAGE_SIZE;
+        if (offset + page_len > flash_size) page_len = flash_size - offset;
+
+        if (!stk_load_address(offset / 2)) {
+            flash_error = "Verify: load address failed";
+            match = false;
+            break;
+        }
+
+        if (!stk_read_page(read_buf, AVR_PAGE_SIZE)) {
+            flash_error = "Verify: read page failed";
+            match = false;
+            break;
+        }
+
+        if (memcmp(read_buf, flash_buf + offset, page_len) != 0) {
+            Serial.printf("[VERIFY] Mismatch at offset 0x%04X\n", offset);
+            match = false;
+            break;
+        }
+
+        offset += AVR_PAGE_SIZE;
+    }
+
+    stk_leave_progmode();
+
+    // Restore normal baud
+    Serial2.end();
+    Serial2.begin(PROTO_BAUD_RATE, SERIAL_8N1, MOTOR_UART_RX, MOTOR_UART_TX);
+
+    return match;
+}
+
+bool avr_flash_if_needed(const char *path) {
+    Serial.println("[AVR] Verifying Arduino flash against stored hex...");
+
+    if (avr_verify_from_file(path)) {
+        Serial.println("[AVR] Flash matches — no update needed.");
+        return true;
+    }
+
+    Serial.printf("[AVR] Mismatch or verify failed (%s) — flashing...\n", flash_error.c_str());
+    return avr_flash_from_file(path);
 }

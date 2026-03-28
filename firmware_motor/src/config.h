@@ -1,6 +1,9 @@
 #ifndef MOTOR_CONFIG_H
 #define MOTOR_CONFIG_H
 
+// Firmware version (auto-incremented by build system)
+#define FW_VERSION          22
+
 // ============================================================================
 // Pin Definitions - Arduino Pro Mini 3.3V
 // ============================================================================

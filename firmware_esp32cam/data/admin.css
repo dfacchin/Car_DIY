@@ -312,6 +312,57 @@ header h1 {
 .log-entry.error { color: #f85149; }
 .log-entry.success { color: #3fb950; }
 
+/* Pin State Grid */
+.pin-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+
+.pin-box {
+    background: #0d1117;
+    border: 2px solid #21262d;
+    border-radius: 6px;
+    padding: 6px;
+    text-align: center;
+    font-size: 11px;
+}
+
+.pin-box .pin-num {
+    font-weight: 700;
+    color: #f0f6fc;
+    font-size: 13px;
+}
+
+.pin-box .pin-mode {
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.pin-box .pin-val {
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.pin-box.mode-in  { border-color: #8b949e; }
+.pin-box.mode-out { border-color: #3fb950; }
+.pin-box.mode-pwm { border-color: #d29922; }
+
+.pin-box.val-high { background: #0d2818; border-color: #3fb950; }
+.pin-box.val-low  { background: #1a1207; border-color: #d29922; }
+
+.pin-box .pin-mode.mode-in  { color: #8b949e; }
+.pin-box .pin-mode.mode-out { color: #3fb950; }
+.pin-box .pin-mode.mode-pwm { color: #d29922; }
+
+.pin-box .pin-label {
+    font-size: 9px;
+    color: #484f58;
+    margin-top: 1px;
+}
+
 /* Firmware Upload */
 .fw-section h3 {
     color: #4cc9f0;
